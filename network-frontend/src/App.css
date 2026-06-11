@@ -10,6 +10,10 @@
 .network-map-wrap {
   position: absolute;
   inset: 0;
+  /* Own stacking context so map markers (inline z-index) can never paint over
+     the chrome panels above; markers only order among themselves. */
+  z-index: 0;
+  isolation: isolate;
 }
 
 .network-map {
@@ -948,12 +952,13 @@
   width: min(290px, calc(100vw - 28px));
   max-height: calc(100vh - 96px);
   overflow-y: auto;
-  background: var(--panel-gradient), var(--panel-bg);
+  /* Solid (not translucent): the expanded listing is the foreground — no map
+     markers / green dots may shine through it. */
+  background: var(--panel-gradient), var(--s1);
   border: 1px solid var(--violet);
   border-radius: var(--rad-card);
   padding: 14px 15px;
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(12px);
   scrollbar-width: thin;
 }
 
