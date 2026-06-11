@@ -81,18 +81,14 @@ function buildMarkerEl(): HTMLDivElement {
   el.className = 'house-marker is-expanded'
   el.innerHTML = `
     <div class="house-marker__card">
-      <svg class="house-marker__dash" aria-hidden="true" preserveAspectRatio="none">
-        <rect x="1.5" y="1.5" width="97%" height="97%" rx="16" ry="16" />
-      </svg>
       <div class="house-marker__photo"></div>
       <span class="house-marker__state"></span>
       <div class="house-marker__body">
         <span class="house-marker__name"></span>
-        <span class="house-marker__wijk"></span>
+        <span class="house-marker__addr"></span>
+        <p class="house-marker__bio"></p>
         <div class="house-marker__extra">
           <div class="house-marker__extra-inner">
-            <span class="house-marker__addr"></span>
-            <p class="house-marker__bio"></p>
             <div class="house-marker__meta">
               <span class="house-marker__age"></span>
               <span class="house-marker__views"></span>
@@ -106,6 +102,30 @@ function buildMarkerEl(): HTMLDivElement {
   return el
 }
 
+/** First sentence of the bio for the compact card teaser. */
+function bioTeaser(bio: string): string {
+  const text = bio.trim()
+  if (!text) {
+    return ''
+  }
+  const match = text.match(/^[\s\S]*?[.!?](?:\s|$)/)
+  const first = match ? match[0].trim() : text
+  if (first.length <= 88) {
+    return first
+  }
+  return `${first.slice(0, 85).trimEnd()}…`
+}
+
+function setMarkerBio(el: HTMLDivElement, isRich: boolean) {
+  const bioEl = el.querySelector<HTMLElement>('.house-marker__bio')
+  if (!bioEl) {
+    return
+  }
+  const full = bioEl.dataset.full ?? ''
+  const teaser = bioEl.dataset.teaser ?? full
+  bioEl.textContent = isRich ? full : teaser
+}
+
 function populateMarker(el: HTMLDivElement, node: EnrichedNode, t: TFn) {
   const photo = el.querySelector<HTMLElement>('.house-marker__photo')
   if (photo && photo.dataset.src !== node.photo) {
@@ -113,14 +133,16 @@ function populateMarker(el: HTMLDivElement, node: EnrichedNode, t: TFn) {
     photo.style.backgroundImage = `url("${node.photo}")`
   }
   el.querySelector('.house-marker__name')!.textContent = node.name || node.city || '—'
-  el.querySelector('.house-marker__addr')!.textContent =
-    [node.street, node.postcode].filter(Boolean).join(' · ') || node.city || ''
-  el.querySelector('.house-marker__wijk')!.textContent = node.neighborhood ?? node.city ?? ''
+  el.querySelector('.house-marker__addr')!.textContent = node.street || node.city || '—'
   el.querySelector('.house-marker__state')!.textContent = statusTag(node, t)
 
-  const bio = node.bio ?? ''
-  el.querySelector('.house-marker__bio')!.textContent =
-    bio.length > 96 ? `${bio.slice(0, 96).trimEnd()}…` : bio
+  const bioEl = el.querySelector<HTMLElement>('.house-marker__bio')!
+  const fullBio = node.bio ?? ''
+  bioEl.dataset.full = fullBio
+  bioEl.dataset.teaser = bioTeaser(fullBio)
+
+  const isRich = el.classList.contains('is-rich')
+  setMarkerBio(el, isRich)
 
   const a = getAnalytics(node)
   el.querySelector('.house-marker__age')!.textContent = t('marker.placedAgo', { days: a.daysOpen })
@@ -206,6 +228,7 @@ export function NetworkMap({
       entry.el.classList.toggle('is-selected', isSelected)
       entry.el.classList.toggle('is-hovered', isHovered)
       entry.el.dataset.status = node.status
+      setMarkerBio(entry.el, isRich)
 
       const pt = map.project([node.longitude, node.latitude])
       let z = Z_DEPTH_BASE + Math.min(800, Math.floor(pt.y))
