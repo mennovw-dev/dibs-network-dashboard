@@ -27,7 +27,7 @@ export function DashboardChrome({
       <div className="map-bar">
         <div className="map-bar__left">
           <div className="brand">
-            <span className="brand__mark" aria-hidden="true" />
+            <img className="brand__mark" src="/dibs-mark-white.png" alt="Dibs" />
             <span className="brand__name">dibs</span>
             <span className="brand__sep">·</span>
             <span className="brand__view">{t('brand.view')}</span>

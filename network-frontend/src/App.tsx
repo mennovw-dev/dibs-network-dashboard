@@ -5,6 +5,7 @@ import { ListingPanel } from './components/ListingPanel'
 import { LocationReadout } from './components/LocationReadout'
 import { Metrics } from './components/Metrics'
 import { NetworkMap } from './components/NetworkMap'
+import { StatusTabs, matchesStatusFilter, type StatusFilter } from './components/StatusTabs'
 import { StreetPanel, type StreetSelection } from './components/StreetPanel'
 import { Timeline } from './components/Timeline'
 import { type TimeWindow } from './components/ViewSettings'
@@ -33,6 +34,7 @@ function App() {
   const [asOf, setAsOf] = useState<number>(() => Date.now())
   const [cursorLoc, setCursorLoc] = useState<GeoLocation | null>(null)
   const [street, setStreet] = useState<StreetSelection | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   useEffect(() => {
     writeCityToUrl(city?.id ?? null)
@@ -48,6 +50,10 @@ function App() {
   }, [])
 
   const enriched = useMemo<EnrichedNode[]>(() => nodes.map(enrichNode), [nodes])
+  const visibleNodes = useMemo(
+    () => enriched.filter((n) => matchesStatusFilter(n, statusFilter)),
+    [enriched, statusFilter],
+  )
   const plotted = enriched.filter((n) => n.has_coordinates).length
   const selectedNode = useMemo(
     () => enriched.find((n) => n.id === selectedId) ?? null,
@@ -60,7 +66,7 @@ function App() {
   return (
     <div className="app">
       <NetworkMap
-        nodes={enriched}
+        nodes={visibleNodes}
         selectedId={selectedId}
         onSelectNode={handleSelectNode}
         city={city}
@@ -79,6 +85,8 @@ function App() {
           timeWindow={timeWindow}
           onTimeWindow={handleTimeWindow}
         />
+
+        <StatusTabs value={statusFilter} onChange={setStatusFilter} nodes={enriched} />
 
         <div className="left-rail">
           <CityOverview city={city} nodes={enriched} onSelect={setCity} />

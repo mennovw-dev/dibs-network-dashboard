@@ -64,29 +64,17 @@
 }
 
 .brand__mark {
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  position: relative;
-  background: linear-gradient(135deg, var(--violet), var(--violet-deep));
-  box-shadow: 0 0 12px rgba(135, 59, 255, 0.55);
-}
-
-.brand__mark::after {
-  content: '';
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--cyan);
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 8px rgba(84, 136, 133, 0.4));
 }
 
 .brand__name {
   font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.01em;
+  font-size: 15px;
+  letter-spacing: -0.01em;
   color: var(--fg);
 }
 
@@ -111,6 +99,90 @@
   color: var(--violet-lite);
 }
 
+/* Status filter tab bar (huisstijl tab pattern, adapted) */
+.status-tabs {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  background: var(--panel-gradient), var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--rad-pill);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(10px);
+  z-index: 3;
+}
+
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border: none;
+  border-radius: var(--rad-pill);
+  background: transparent;
+  color: var(--fg2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.status-tab:hover {
+  color: var(--fg);
+}
+
+.status-tab__count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--rad-pill);
+  background: var(--s2);
+  color: var(--dim);
+}
+
+/* Active pill — tinted to match the map legend / marker colors. */
+.status-tab.is-active {
+  background: var(--teal-soft);
+  color: var(--c100);
+}
+
+.status-tab.is-active .status-tab__count {
+  background: rgba(84, 136, 133, 0.28);
+  color: var(--c100);
+}
+
+.status-tab--active.is-active {
+  background: rgba(61, 220, 132, 0.14);
+  color: var(--green);
+}
+
+.status-tab--active.is-active .status-tab__count {
+  background: rgba(61, 220, 132, 0.2);
+  color: var(--green);
+}
+
+.status-tab--paused.is-active {
+  background: rgba(255, 200, 97, 0.14);
+  color: var(--gold);
+}
+
+.status-tab--paused.is-active .status-tab__count {
+  background: rgba(255, 200, 97, 0.2);
+  color: var(--gold);
+}
+
+.status-tab--closed.is-active {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+}
+
 /* Left rail (city overview + metrics) */
 .left-rail {
   position: absolute;
@@ -124,7 +196,7 @@
 
 /* City overview panel */
 .city-overview {
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-card);
   box-shadow: var(--shadow-panel);
@@ -225,7 +297,7 @@
   display: inline-flex;
   padding: 3px;
   gap: 2px;
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-pill);
   backdrop-filter: blur(8px);
@@ -257,7 +329,7 @@
   right: 14px;
   width: 210px;
   padding: 12px 13px;
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-card);
   box-shadow: var(--shadow-panel);
@@ -368,13 +440,13 @@
 }
 
 .radio:hover {
-  border-color: var(--violet);
+  border-color: var(--green);
 }
 
 .radio.is-active {
-  background: var(--violet-soft);
-  border-color: var(--violet);
-  color: var(--violet-lite);
+  background: rgba(61, 220, 132, 0.12);
+  border-color: var(--green);
+  color: var(--green);
 }
 
 /* Timeline scrubber */
@@ -388,7 +460,7 @@
   gap: 12px;
   width: min(560px, calc(100vw - 32px));
   padding: 10px 14px;
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-pill);
   box-shadow: var(--shadow-panel);
@@ -434,9 +506,9 @@
   height: 16px;
   border-radius: 50%;
   background: #fff;
-  border: 2px solid var(--violet);
+  border: 2px solid var(--teal-bright);
   cursor: pointer;
-  box-shadow: 0 0 8px rgba(135, 59, 255, 0.6);
+  box-shadow: 0 0 8px rgba(84, 136, 133, 0.6);
 }
 
 .timeline__range::-moz-range-thumb {
@@ -474,7 +546,7 @@
 
 /* Street panel (entries on a clicked street) */
 .street-panel {
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-card);
   box-shadow: var(--shadow-panel);
@@ -646,7 +718,7 @@
 }
 
 .met {
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   padding: 8px 9px;
   display: flex;
   flex-direction: column;
@@ -689,7 +761,7 @@
   padding: 7px 14px;
   border-radius: var(--rad-pill);
   border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   color: var(--violet-lite);
   backdrop-filter: blur(8px);
 }
@@ -707,7 +779,7 @@
   width: min(290px, calc(100vw - 28px));
   max-height: calc(100vh - 96px);
   overflow-y: auto;
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--violet);
   border-radius: var(--rad-card);
   padding: 14px 15px;
@@ -839,7 +911,16 @@
   overflow: hidden;
 }
 
+.listing-panel__photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--photo-scrim);
+  pointer-events: none;
+}
+
 .listing-panel__photo-tag {
+  z-index: 1;
   position: absolute;
   left: 8px;
   bottom: 8px;
@@ -1044,7 +1125,7 @@
   font-family: var(--font-mono);
   font-size: 15px;
   font-weight: 700;
-  color: var(--fg);
+  color: var(--gold);
 }
 
 .ministat__k {
@@ -1068,7 +1149,7 @@
 
 .house-marker__card {
   width: 176px;
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-card);
   box-shadow: var(--shadow-panel);
@@ -1091,7 +1172,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(rgba(7, 6, 12, 0) 45%, rgba(7, 6, 12, 0.72));
+  background: var(--photo-scrim);
 }
 
 .house-marker__body {
@@ -1253,8 +1334,8 @@
 
 /* Selected → foreground, bigger, violet accent. */
 .house-marker.is-selected .house-marker__card {
-  border-color: var(--violet);
-  box-shadow: 0 0 0 1.5px var(--violet), 0 18px 48px rgba(135, 59, 255, 0.3);
+  border-color: var(--teal-bright);
+  box-shadow: 0 0 0 1.5px var(--teal-bright), 0 18px 48px rgba(84, 136, 133, 0.32);
   transform: scale(1.06);
 }
 
@@ -1302,7 +1383,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 10px 14px;
-  background: var(--panel-bg);
+  background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-card);
   box-shadow: var(--shadow-panel);
@@ -1435,6 +1516,18 @@
 @media (max-width: 640px) {
   .view-kick {
     display: none;
+  }
+
+  .status-tabs {
+    top: 52px;
+    gap: 1px;
+    padding: 3px;
+  }
+
+  .status-tab {
+    padding: 5px 9px;
+    font-size: 11px;
+    gap: 5px;
   }
 
   .left-rail {

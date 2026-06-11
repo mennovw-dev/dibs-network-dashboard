@@ -1,61 +1,79 @@
-/* Dibs huisstijl — black-clean. Violet primair (#863bff), cyan accent (#47bfff),
-   lavendel/wit tekst. Geen warm-goud/CRT meer. */
+/* Dibs dashboard — dark, staff-only. Built on the Dibs huisstijl:
+   teal (c-ramp) as the signature accent (used sparingly), neutral teal-tinted
+   dark base, with gold + green kept as the lively data/status colors.
+   No light mode (this is a control-room surface, the brand's "dark = focus"). */
 :root {
-  /* Surfaces — near-black met subtiele violette ondertoon */
-  --bg: #07060c;
-  --bg-deep: #050409;
-  --s1: #0d0b16;
-  --s2: #14111f;
-  --s3: #1d1830;
-  --s4: #2a2342;
+  /* Teal ramp (huisstijl C50–C900) */
+  --c50: #eef3f3;
+  --c100: #cadad9;
+  --c200: #b0cbc7;
+  --c300: #8cafad;
+  --c400: #7a8c90;
+  --c500: #548885;
+  --c600: #4c7c79;
+  --c700: #3c615e;
+  --c800: #2e4b49;
+  --c900: #233938;
 
-  /* Tekst */
-  --fg: #f3f0fb;
-  --fg2: #b7afd2;
-  --dim: #6f6790;
+  /* Surfaces — near-black with a subtle teal tint */
+  --bg: #0a0f0e;
+  --bg-deep: #060a09;
+  --s1: #0f1514;
+  --s2: #141b1a;
+  --s3: #1b2423;
+  --s4: #273230;
 
-  /* Dibs violet (primair) */
-  --violet: #863bff;
-  --violet-deep: #7e14ff;
-  --violet-soft: #2a1a52;
-  --violet-lite: #b794ff;
-  --lavender: #ede6ff;
+  /* Text (neutral teal-gray) */
+  --fg: #f1f4f3;
+  --fg2: #aab4b1;
+  --dim: #69736f;
 
-  /* Cyan accent */
-  --cyan: #47bfff;
-  --cyan-deep: #1f6f9e;
-  --cyan-soft: #112a3a;
+  /* Teal accent — the signature, kept sparing */
+  --teal: #548885; /* c500 */
+  --teal-bright: #6fb3ad; /* lifted for glow on dark */
+  --teal-deep: #3c615e; /* c700, canonical action */
+  --teal-soft: #16201f; /* dark accent-soft (selected bg) */
+  --teal-lite: #8cafad; /* c300, muted cool label */
 
-  /* Status / lifecycle */
+  /* Status / data colors (kept per request) */
   --green: #3ddc84;
-  --green-stale: #cfeede;
+  --green-deep: #0c7844;
   --green-pine: #1f5a3a;
-  --red: #ff4d4d;
+  --red: #d94f4f;
   --red-aged: #7e4248;
   --gold: #ffc861;
   --gold-bright: #ffd98a;
-  --grey-closed: #4a4560;
+  --gold-warm: #e09400;
+  --grey-closed: #535353;
 
-  /* Semantische aliassen (compat met bestaande code) */
-  --teal: var(--cyan);
-  --teal-deep: var(--cyan-deep);
-  --teal-soft: var(--cyan-soft);
-  --teal-lite: var(--violet-lite);
-  --sand: var(--violet-lite);
-  --int: var(--violet);
+  /* Legacy aliases (older code referenced violet/cyan/lavender) → mapped on-brand */
+  --violet: var(--teal);
+  --violet-deep: var(--teal-deep);
+  --violet-lite: var(--teal-lite);
+  --violet-soft: var(--teal-soft);
+  --lavender: var(--c100);
+  --cyan: var(--teal-bright);
+  --cyan-deep: var(--c600);
+  --cyan-soft: var(--c900);
+  --sand: var(--teal-lite);
+  --int: var(--teal);
 
-  --panel-bg: rgba(13, 11, 22, 0.82);
-  --panel-border: rgba(135, 59, 255, 0.28);
-  --map-vignette: radial-gradient(ellipse at center, transparent 52%, rgba(5, 4, 9, 0.62) 100%);
+  --panel-bg: rgba(15, 21, 20, 0.84);
+  --panel-border: rgba(140, 175, 173, 0.16); /* subtle teal-gray, not a loud accent */
+  --panel-gradient: linear-gradient(160deg, rgba(84, 136, 133, 0.08), rgba(15, 21, 20, 0) 60%);
+  --map-vignette: radial-gradient(ellipse at center, transparent 52%, rgba(6, 10, 9, 0.62) 100%);
+  --photo-scrim: linear-gradient(rgba(8, 12, 11, 0) 55%, rgba(8, 12, 11, 0.82));
 
-  --rad: 10px;
-  --rad-card: 14px;
+  /* Radius (huisstijl practice scale) */
+  --rad: 12px;
+  --rad-card: 18px;
+  --rad-feed: 24px;
   --rad-chip: 8px;
   --rad-pill: 999px;
 
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Montserrat', system-ui, -apple-system, sans-serif;
 
-  --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.55);
-  --shadow-glow: 0 0 0 1px rgba(135, 59, 255, 0.18), 0 8px 32px rgba(135, 59, 255, 0.12);
+  --shadow-panel: 0 14px 44px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 0 1px rgba(84, 136, 133, 0.18), 0 10px 34px rgba(12, 18, 17, 0.5);
 }
