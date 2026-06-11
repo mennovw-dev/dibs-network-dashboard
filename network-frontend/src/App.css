@@ -1313,6 +1313,7 @@
 
 /* House markers on the map */
 .house-marker {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1322,18 +1323,46 @@
   will-change: z-index;
 }
 
+/* Leader line from pin → card when placement nudges the card aside. */
+.house-marker__leader {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.house-marker__leader line {
+  stroke: rgba(255, 200, 97, 0.44);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+}
+
+.house-marker.is-offset .house-marker__leader {
+  opacity: 1;
+}
+
 .house-marker__card {
   position: relative;
+  z-index: 1;
   width: 176px;
+  --ox: 0px;
+  --oy: 0px;
+  --lift: 0px;
   background: var(--panel-gradient), var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--rad-card);
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(10px);
   overflow: hidden;
+  transform: translate(var(--ox), calc(var(--oy) + var(--lift)));
   transform-origin: bottom center;
   transition:
-    transform 0.22s cubic-bezier(0.34, 1.02, 0.38, 1),
+    transform 0.28s cubic-bezier(0.34, 1.02, 0.38, 1),
     border-color 0.2s ease,
     box-shadow 0.22s cubic-bezier(0.34, 1.02, 0.38, 1);
 }
@@ -1470,6 +1499,8 @@
 }
 
 .house-marker__pin {
+  position: relative;
+  z-index: 1;
   width: 11px;
   height: 11px;
   margin-top: -1px;
@@ -1493,9 +1524,9 @@
 
 /* Hover → solid gold outline + gentle lift. */
 .house-marker.is-hovered .house-marker__card {
+  --lift: -5px;
   border-color: var(--gold);
   box-shadow: 0 0 0 1px var(--gold), 0 16px 42px rgba(0, 0, 0, 0.55);
-  transform: translateY(-5px);
 }
 
 .house-marker.is-hovered .house-marker__pin {
@@ -1504,9 +1535,9 @@
 
 /* Selected → subtle foreground lift, teal accent. */
 .house-marker.is-selected .house-marker__card {
+  --lift: -6px;
   border-color: var(--teal-bright);
   box-shadow: 0 0 0 1px rgba(111, 179, 173, 0.35), 0 18px 48px rgba(84, 136, 133, 0.28);
-  transform: translateY(-6px);
 }
 
 .house-marker.is-selected .house-marker__photo {

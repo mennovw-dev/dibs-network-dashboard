@@ -19,6 +19,128 @@ const Z_DEPTH_BASE = 10
 const Z_HOVER_BOOST = 5000
 const Z_SELECT_BOOST = 6000
 
+// Screen-space card footprint (keep in sync with CSS).
+const CARD_W = 176
+const CARD_H = 148
+const CARD_H_RICH = 208
+const PIN_H = 11
+const PIN_GAP = 3
+/** Allow gentle overlap — not a rigid grid, but stay usable. */
+const MAX_OVERLAP = 0.34
+
+interface ScreenRect {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+interface Offset {
+  ox: number
+  oy: number
+}
+
+function overlapRatio(a: ScreenRect, b: ScreenRect): number {
+  const ox = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
+  const oy = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+  const hit = ox * oy
+  if (hit <= 0) {
+    return 0
+  }
+  const areaA = (a.right - a.left) * (a.bottom - a.top)
+  const areaB = (b.right - b.left) * (b.bottom - b.top)
+  return hit / Math.min(areaA, areaB)
+}
+
+function cardScreenRect(px: number, py: number, ox: number, oy: number, h: number): ScreenRect {
+  const bottom = py - PIN_H - PIN_GAP + oy
+  const cx = px + ox
+  const half = CARD_W / 2
+  return { left: cx - half, right: cx + half, top: bottom - h, bottom }
+}
+
+/** Organic offsets — prefer up / fan out, not a blocky grid. */
+function* offsetCandidates(): Generator<Offset> {
+  yield { ox: 0, oy: 0 }
+  for (let ring = 1; ring <= 6; ring++) {
+    const d = ring * 24
+    yield { ox: 0, oy: -d }
+    yield { ox: d * 0.7, oy: -d * 0.55 }
+    yield { ox: -d * 0.7, oy: -d * 0.55 }
+    yield { ox: d, oy: -d * 0.15 }
+    yield { ox: -d, oy: -d * 0.15 }
+    yield { ox: d * 0.45, oy: d * 0.4 }
+    yield { ox: -d * 0.45, oy: d * 0.4 }
+    yield { ox: 0, oy: d * 0.25 }
+  }
+}
+
+function pickOffset(px: number, py: number, h: number, placed: ScreenRect[]): Offset {
+  let best: Offset = { ox: 0, oy: 0 }
+  let bestScore = Infinity
+
+  for (const c of offsetCandidates()) {
+    const rect = cardScreenRect(px, py, c.ox, c.oy, h)
+    let peak = 0
+    for (const p of placed) {
+      peak = Math.max(peak, overlapRatio(rect, p))
+    }
+    const dist = Math.hypot(c.ox, c.oy)
+    const score = peak * 900 + dist * 0.12
+    if (peak <= MAX_OVERLAP && score < bestScore) {
+      bestScore = score
+      best = c
+    }
+  }
+
+  if (bestScore === Infinity) {
+    for (const c of offsetCandidates()) {
+      const rect = cardScreenRect(px, py, c.ox, c.oy, h)
+      let peak = 0
+      for (const p of placed) {
+        peak = Math.max(peak, overlapRatio(rect, p))
+      }
+      const score = peak * 400 + Math.hypot(c.ox, c.oy) * 0.15
+      if (score < bestScore) {
+        bestScore = score
+        best = c
+      }
+    }
+  }
+
+  return best
+}
+
+function updateLeaderLine(el: HTMLDivElement, ox: number, oy: number, cardH: number) {
+  const svg = el.querySelector<SVGSVGElement>('.house-marker__leader')
+  const line = el.querySelector<SVGLineElement>('.house-marker__leader line')
+  if (!svg || !line) {
+    return
+  }
+
+  const w = CARD_W
+  const totalH = cardH + PIN_H + PIN_GAP + 6
+  svg.setAttribute('width', String(w))
+  svg.setAttribute('height', String(totalH))
+
+  const pinX = w / 2
+  const pinY = cardH + PIN_GAP + PIN_H / 2
+  const cardX = w / 2 + ox
+  const cardY = cardH + oy
+  const dist = Math.hypot(cardX - pinX, cardY - pinY)
+
+  const show = dist > 8
+  el.classList.toggle('is-offset', show)
+  if (!show) {
+    return
+  }
+
+  line.setAttribute('x1', String(pinX))
+  line.setAttribute('y1', String(pinY))
+  line.setAttribute('x2', String(cardX))
+  line.setAttribute('y2', String(cardY))
+}
+
 interface NetworkMapProps {
   nodes: EnrichedNode[]
   selectedId: string | null
@@ -80,6 +202,9 @@ function buildMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
   el.className = 'house-marker is-expanded'
   el.innerHTML = `
+    <svg class="house-marker__leader" aria-hidden="true">
+      <line />
+    </svg>
     <div class="house-marker__card">
       <div class="house-marker__photo"></div>
       <span class="house-marker__state"></span>
@@ -192,8 +317,7 @@ export function NetworkMap({
   const cursorTimer = useRef<number | null>(null)
   const cursorAbort = useRef<AbortController | null>(null)
 
-  // Depth-sort markers by screen Y (lower on screen = closer = on top) and
-  // bring hovered / selected cards to the front — no cards disappear.
+  // Depth-sort + organic screen-space placement (cards fan out with leader lines).
   const syncMarkerStates = useRef<() => void>(() => {})
   syncMarkerStates.current = () => {
     const map = mapRef.current
@@ -207,6 +331,14 @@ export function NetworkMap({
     const isVisible = (n: EnrichedNode) =>
       !n.listed_at || new Date(n.listed_at).getTime() <= asOfTs
 
+    type Row = {
+      node: EnrichedNode
+      pt: { x: number; y: number }
+      entry: { marker: Marker; el: HTMLDivElement }
+      isRich: boolean
+    }
+
+    const rows: Row[] = []
     for (const node of nodesRef.current) {
       const entry = markersRef.current.get(node.id)
       if (!entry) {
@@ -217,10 +349,42 @@ export function NetworkMap({
         continue
       }
       entry.el.style.display = ''
+      const isRich = node.id === selected || node.id === hovered
+      rows.push({
+        node,
+        pt: map.project([node.longitude, node.latitude]),
+        entry,
+        isRich,
+      })
+    }
 
+    // Place back → front; focus card stays on its pin.
+    const placementOrder = [...rows].sort((a, b) => {
+      const focus = (id: string) => (id === selected ? 2 : id === hovered ? 1 : 0)
+      const fa = focus(a.node.id)
+      const fb = focus(b.node.id)
+      if (fa !== fb) {
+        return fa - fb
+      }
+      return a.pt.y - b.pt.y
+    })
+
+    const placed: ScreenRect[] = []
+    const offsets = new globalThis.Map<string, Offset>()
+
+    for (const { node, pt, isRich } of placementOrder) {
+      const h = isRich ? CARD_H_RICH : CARD_H
+      const off =
+        isRich ? { ox: 0, oy: 0 } : pickOffset(pt.x, pt.y, h, placed)
+      offsets.set(node.id, off)
+      placed.push(cardScreenRect(pt.x, pt.y, off.ox, off.oy, h))
+    }
+
+    for (const { node, pt, entry, isRich } of rows) {
       const isSelected = node.id === selected
       const isHovered = node.id === hovered
-      const isRich = isSelected || isHovered
+      const off = offsets.get(node.id) ?? { ox: 0, oy: 0 }
+      const cardH = isRich ? CARD_H_RICH : CARD_H
 
       entry.el.classList.add('is-expanded')
       entry.el.classList.remove('is-collapsed')
@@ -230,7 +394,13 @@ export function NetworkMap({
       entry.el.dataset.status = node.status
       setMarkerBio(entry.el, isRich)
 
-      const pt = map.project([node.longitude, node.latitude])
+      const card = entry.el.querySelector<HTMLElement>('.house-marker__card')
+      if (card) {
+        card.style.setProperty('--ox', `${off.ox}px`)
+        card.style.setProperty('--oy', `${off.oy}px`)
+      }
+      updateLeaderLine(entry.el, off.ox, off.oy, cardH)
+
       let z = Z_DEPTH_BASE + Math.min(800, Math.floor(pt.y))
       if (isHovered) {
         z += Z_HOVER_BOOST
