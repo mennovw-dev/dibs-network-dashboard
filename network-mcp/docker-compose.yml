@@ -1,0 +1,13 @@
+services:
+  dibs-network-mcp:
+    image: dibs-network-mcp:latest
+    build: .
+    ports:
+      - "127.0.0.1:8011:8011"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - MCP_PORT=8011
+      - MCP_LISTEN_ALL=true
+      - STAGING_CONTAINER=dibs-staging-dibs-backend-1
+    restart: unless-stopped
