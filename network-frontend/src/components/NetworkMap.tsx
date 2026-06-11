@@ -1,31 +1,31 @@
-import { useEffect, useRef } from 'react'
-import maplibregl, { type Map } from 'maplibre-gl'
-import type { ListingNode } from '../types'
+import { useEffect, useMemo, useRef } from 'react'
+import maplibregl, { type Map, type Marker } from 'maplibre-gl'
 import type { City } from '../lib/cities'
 import { NL_VIEW } from '../lib/cities'
-import { nodesToGeoJSON } from '../lib/nodesGeoJSON'
-import { MAP_STATUS_COLORS } from '../lib/status'
+import type { EnrichedNode } from '../lib/houses'
+import { statusTag } from '../lib/status'
+import { useT } from '../i18n'
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
-const SOURCE_ID = 'listing-nodes'
 const BUILDINGS_LAYER = 'dibs-3d-buildings'
 const BUILDINGS_MIN_ZOOM = 13
+const MAX_EXPANDED = 6
 
 interface NetworkMapProps {
-  nodes: ListingNode[]
+  nodes: EnrichedNode[]
   selectedId: string | null
-  onSelectNode: (node: ListingNode | null) => void
+  onSelectNode: (node: EnrichedNode | null) => void
   city: City | null
   buildings3d: boolean
 }
 
-function haloRadiusExpr(
-  selectedId: string | null,
-  pulse = 0,
-): maplibregl.ExpressionSpecification {
-  const base = 13 + pulse * 6
-  const sel = 18 + pulse * 8
-  return ['case', ['==', ['get', 'id'], selectedId ?? ''], sel, base]
+const STATUS_ORDER: Record<string, number> = { active: 0, paused: 1, closed: 2, draft: 3 }
+
+function priorityScore(node: EnrichedNode): number {
+  const statusRank = STATUS_ORDER[node.status] ?? 4
+  const listedMs = node.listed_at ? new Date(node.listed_at).getTime() : 0
+  // Lower is better: status first, then most recent listing.
+  return statusRank * 1e13 - listedMs
 }
 
 function addBuildingsLayer(map: Map, visible: boolean) {
@@ -39,7 +39,6 @@ function addBuildingsLayer(map: Map, visible: boolean) {
   if (!vectorSourceId) {
     return
   }
-
   map.addLayer({
     id: BUILDINGS_LAYER,
     type: 'fill-extrusion',
@@ -74,6 +73,23 @@ function addBuildingsLayer(map: Map, visible: boolean) {
   })
 }
 
+function buildMarkerEl(): HTMLDivElement {
+  const el = document.createElement('div')
+  el.className = 'house-marker'
+  el.innerHTML = `
+    <div class="house-marker__card">
+      <div class="house-marker__photo"></div>
+      <div class="house-marker__body">
+        <span class="house-marker__name"></span>
+        <span class="house-marker__wijk"></span>
+      </div>
+      <span class="house-marker__state"></span>
+    </div>
+    <span class="house-marker__pin"></span>
+  `
+  return el
+}
+
 export function NetworkMap({
   nodes,
   selectedId,
@@ -81,24 +97,83 @@ export function NetworkMap({
   city,
   buildings3d,
 }: NetworkMapProps) {
+  const t = useT()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
-  const popupRef = useRef<maplibregl.Popup | null>(null)
+  const markersRef = useRef<globalThis.Map<string, { marker: Marker; el: HTMLDivElement }>>(
+    new globalThis.Map(),
+  )
+  const hoveredRef = useRef<string | null>(null)
+
   const nodesRef = useRef(nodes)
   nodesRef.current = nodes
   const buildings3dRef = useRef(buildings3d)
   buildings3dRef.current = buildings3d
-  const selectedRef = useRef(selectedId)
-  selectedRef.current = selectedId
   const onSelectRef = useRef(onSelectNode)
   onSelectRef.current = onSelectNode
+  const tRef = useRef(t)
+  tRef.current = t
 
-  // Init the map exactly once. Camera + handlers never tear down on data updates.
+  // Which nodes are expanded by default (top N by priority).
+  const baseExpanded = useMemo(() => {
+    const sorted = [...nodes].filter((n) => n.has_coordinates).sort(
+      (a, b) => priorityScore(a) - priorityScore(b),
+    )
+    return new Set(sorted.slice(0, MAX_EXPANDED).map((n) => n.id))
+  }, [nodes])
+
+  const lowestPriorityExpanded = useMemo(() => {
+    let worst: EnrichedNode | null = null
+    for (const n of nodes) {
+      if (!baseExpanded.has(n.id)) {
+        continue
+      }
+      if (!worst || priorityScore(n) > priorityScore(worst)) {
+        worst = n
+      }
+    }
+    return worst?.id ?? null
+  }, [nodes, baseExpanded])
+
+  // Apply collapsed/expanded/selected/hovered classes + content to all markers.
+  const syncMarkerStates = useRef<() => void>(() => {})
+  syncMarkerStates.current = () => {
+    const hovered = hoveredRef.current
+    const expanded = new Set(baseExpanded)
+    // Hovering a collapsed card expands it and bumps the lowest-priority one out.
+    if (hovered && !expanded.has(hovered)) {
+      if (lowestPriorityExpanded) {
+        expanded.delete(lowestPriorityExpanded)
+      }
+      expanded.add(hovered)
+    }
+    if (selectedId) {
+      expanded.add(selectedId)
+    }
+
+    for (const node of nodesRef.current) {
+      const entry = markersRef.current.get(node.id)
+      if (!entry) {
+        continue
+      }
+      const isExpanded = expanded.has(node.id)
+      const isSelected = node.id === selectedId
+      const isHovered = node.id === hovered
+      entry.el.classList.toggle('is-expanded', isExpanded)
+      entry.el.classList.toggle('is-collapsed', !isExpanded)
+      entry.el.classList.toggle('is-selected', isSelected)
+      entry.el.dataset.status = node.status
+      entry.el.style.zIndex = String(
+        isSelected ? 50 : isHovered ? 40 : isExpanded ? 20 : 10,
+      )
+    }
+  }
+
+  // Init the map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
       return
     }
-
     const initial = city ?? { ...NL_VIEW, id: '', name: '' }
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -109,178 +184,103 @@ export function NetworkMap({
       bearing: initial.bearing,
       attributionControl: false,
     })
-
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right')
 
-    const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 16,
-      className: 'node-popup',
-    })
-    popupRef.current = popup
-
     map.on('load', () => {
       addBuildingsLayer(map, buildings3dRef.current)
+    })
 
-      map.addSource(SOURCE_ID, { type: 'geojson', data: nodesToGeoJSON([]) })
-
-      // Soft outer glow
-      map.addLayer({
-        id: 'listing-nodes-halo',
-        type: 'circle',
-        source: SOURCE_ID,
-        paint: {
-          'circle-radius': haloRadiusExpr(selectedRef.current),
-          'circle-color': [
-            'match',
-            ['get', 'status'],
-            'active',
-            MAP_STATUS_COLORS.active,
-            'paused',
-            MAP_STATUS_COLORS.paused,
-            'closed',
-            MAP_STATUS_COLORS.closed,
-            MAP_STATUS_COLORS.draft,
-          ],
-          'circle-opacity': 0.22,
-          'circle-blur': 0.6,
-        },
-      })
-
-      // Core dot
-      map.addLayer({
-        id: 'listing-nodes',
-        type: 'circle',
-        source: SOURCE_ID,
-        paint: {
-          'circle-radius': ['case', ['==', ['get', 'id'], selectedRef.current ?? ''], 8, 6],
-          'circle-color': [
-            'match',
-            ['get', 'status'],
-            'active',
-            MAP_STATUS_COLORS.active,
-            'paused',
-            MAP_STATUS_COLORS.paused,
-            'closed',
-            MAP_STATUS_COLORS.closed,
-            'draft',
-            MAP_STATUS_COLORS.draft,
-            MAP_STATUS_COLORS.active,
-          ],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-opacity': 0.85,
-        },
-      })
-
-      // Invisible wide hit target so clicking/hovering is forgiving
-      map.addLayer({
-        id: 'listing-nodes-hit',
-        type: 'circle',
-        source: SOURCE_ID,
-        paint: { 'circle-radius': 16, 'circle-color': '#000', 'circle-opacity': 0 },
-      })
-
-      const pickNode = (featureId: string | number | undefined) => {
-        if (featureId == null) {
-          onSelectRef.current(null)
-          return
-        }
-        const node = nodesRef.current.find((n) => n.id === String(featureId))
-        onSelectRef.current(node ?? null)
+    map.on('click', (e) => {
+      // Clicking empty map clears selection.
+      if (!(e.originalEvent.target as HTMLElement)?.closest('.house-marker')) {
+        onSelectRef.current(null)
       }
-
-      map.on('click', 'listing-nodes-hit', (event) => {
-        pickNode(event.features?.[0]?.properties?.id)
-      })
-
-      map.on('mouseenter', 'listing-nodes-hit', (event) => {
-        map.getCanvas().style.cursor = 'pointer'
-        const f = event.features?.[0]
-        const node = nodesRef.current.find((n) => n.id === String(f?.properties?.id))
-        if (node && node.longitude != null && node.latitude != null) {
-          popup
-            .setLngLat([node.longitude, node.latitude])
-            .setHTML(
-              `<span class="node-popup__name">${escapeHtml(node.name || node.city || '—')}</span>` +
-                `<span class="node-popup__sub">${escapeHtml(node.city || '')}</span>`,
-            )
-            .addTo(map)
-        }
-      })
-
-      map.on('mouseleave', 'listing-nodes-hit', () => {
-        map.getCanvas().style.cursor = ''
-        popup.remove()
-      })
-
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-      source?.setData(nodesToGeoJSON(nodesRef.current))
-
-      // Gentle pulse animation on the halo (cheap; few nodes).
-      let t = 0
-      const tick = () => {
-        if (!mapRef.current) {
-          return
-        }
-        t += 0.035
-        const pulse = (Math.sin(t) + 1) / 2
-        if (map.getLayer('listing-nodes-halo')) {
-          map.setPaintProperty(
-            'listing-nodes-halo',
-            'circle-radius',
-            haloRadiusExpr(selectedRef.current, pulse),
-          )
-        }
-        requestAnimationFrame(tick)
-      }
-      requestAnimationFrame(tick)
     })
 
     mapRef.current = map
-
     return () => {
-      popup.remove()
       map.remove()
       mapRef.current = null
+      markersRef.current.clear()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Subtle data updates — only the GeoJSON source data changes, never the camera.
+  // Create / update / remove markers when nodes change.
   useEffect(() => {
     const map = mapRef.current
     if (!map) {
       return
     }
-    const apply = () => {
-      const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-      source?.setData(nodesToGeoJSON(nodes))
+    const seen = new Set<string>()
+
+    for (const node of nodes) {
+      if (!node.has_coordinates || node.longitude == null || node.latitude == null) {
+        continue
+      }
+      seen.add(node.id)
+      let entry = markersRef.current.get(node.id)
+
+      if (!entry) {
+        const el = buildMarkerEl()
+        el.dataset.id = node.id
+        el.addEventListener('mouseenter', () => {
+          hoveredRef.current = node.id
+          el.classList.add('is-hovered')
+          syncMarkerStates.current()
+        })
+        el.addEventListener('mouseleave', () => {
+          if (hoveredRef.current === node.id) {
+            hoveredRef.current = null
+          }
+          el.classList.remove('is-hovered')
+          syncMarkerStates.current()
+        })
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation()
+          const current = nodesRef.current.find((n) => n.id === node.id)
+          onSelectRef.current(current ?? null)
+        })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([node.longitude, node.latitude])
+          .addTo(map)
+        entry = { marker, el }
+        markersRef.current.set(node.id, entry)
+      } else {
+        entry.marker.setLngLat([node.longitude, node.latitude])
+      }
+
+      // Update content.
+      const photo = entry.el.querySelector<HTMLElement>('.house-marker__photo')
+      if (photo && photo.dataset.src !== node.photo) {
+        photo.dataset.src = node.photo
+        photo.style.backgroundImage = `url("${node.photo}")`
+      }
+      entry.el.querySelector('.house-marker__name')!.textContent =
+        node.name || node.city || '—'
+      entry.el.querySelector('.house-marker__wijk')!.textContent =
+        node.neighborhood ?? node.city ?? ''
+      entry.el.querySelector('.house-marker__state')!.textContent = statusTag(node, tRef.current)
     }
-    if (map.isStyleLoaded() && map.getSource(SOURCE_ID)) {
-      apply()
-    } else {
-      map.once('idle', apply)
+
+    // Remove stale markers.
+    for (const [id, entry] of markersRef.current) {
+      if (!seen.has(id)) {
+        entry.marker.remove()
+        markersRef.current.delete(id)
+      }
     }
+
+    syncMarkerStates.current()
   }, [nodes])
 
-  // Selection highlight (core dot only; halo handled by pulse loop).
+  // Re-sync visual states when selection / expansion changes.
   useEffect(() => {
-    const map = mapRef.current
-    if (!map?.isStyleLoaded() || !map.getLayer('listing-nodes')) {
-      return
-    }
-    map.setPaintProperty('listing-nodes', 'circle-radius', [
-      'case',
-      ['==', ['get', 'id'], selectedId ?? ''],
-      9,
-      6,
-    ])
-  }, [selectedId])
+    syncMarkerStates.current()
+  }, [selectedId, baseExpanded, lowestPriorityExpanded])
 
-  // City change → smooth fly, no rebuild.
+  // City change → smooth fly.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !city) {
@@ -295,6 +295,24 @@ export function NetworkMap({
       essential: true,
     })
   }, [city])
+
+  // Click-to-zoom on selected node.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !selectedId) {
+      return
+    }
+    const node = nodesRef.current.find((n) => n.id === selectedId)
+    if (node?.longitude != null && node?.latitude != null) {
+      map.flyTo({
+        center: [node.longitude, node.latitude],
+        zoom: Math.max(map.getZoom(), 15.5),
+        pitch: Math.max(map.getPitch(), 50),
+        duration: 1200,
+        essential: true,
+      })
+    }
+  }, [selectedId])
 
   // 3D toggle.
   useEffect(() => {
@@ -323,12 +341,4 @@ export function NetworkMap({
       <div className="map-vignette" aria-hidden="true" />
     </div>
   )
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }

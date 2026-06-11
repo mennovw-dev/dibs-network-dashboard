@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { ListingNode } from '../types'
+import type { EnrichedNode } from '../lib/houses'
 import { panelBorderColor, statusTag } from '../lib/status'
 import { useT } from '../i18n'
 
 interface ListingPanelProps {
-  node: ListingNode | null
+  node: EnrichedNode | null
   onClose: () => void
 }
 
@@ -22,9 +22,8 @@ export function ListingPanel({ node, onClose }: ListingPanelProps) {
 
   const borderColor = panelBorderColor(node.status)
   const postcodeLine = [node.postcode, node.street].filter(Boolean).join(' · ')
-  const description =
-    'Dit is ons huis en wij zoeken een nieuwe huisgenoot die past bij onze sfeer, ' +
-    'gezamenlijke etentjes en af en toe een borrel op de bank.'
+  const description = node.bio
+  const snippet = description.length > 64 ? `${description.slice(0, 64).trimEnd()}…` : description
 
   return (
     <aside className="listing-panel" style={{ borderColor }} data-status={node.status}>
@@ -64,10 +63,13 @@ export function ListingPanel({ node, onClose }: ListingPanelProps) {
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
       >
-        {expanded ? description : `${description.slice(0, 48).trimEnd()}…`}
+        {expanded ? description : snippet}
       </button>
 
-      <div className="listing-panel__photo" aria-hidden="true">
+      <div
+        className="listing-panel__photo"
+        style={{ backgroundImage: `url("${node.photo}")` }}
+      >
         <span className="listing-panel__photo-tag">{t('panel.staging')}</span>
       </div>
 

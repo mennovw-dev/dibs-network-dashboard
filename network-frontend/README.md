@@ -8,7 +8,10 @@ React + Vite + MapLibre dashboard voor staging listings. Mijlpaal 3.
 - Stad-select (`CitySwitcher`, registry in `src/lib/cities.ts`, `?city=` URL-param) — Utrecht eerst, 1 entry per nieuwe stad
 - NL/ENG taaltoggle rechtsbovenin (lichtgewicht i18n, `src/i18n/`, localStorage)
 - 3D-gebouwen via OpenStreetMap-extrusies (MapLibre `fill-extrusion`), aan/uit in Weergave-paneel
-- Kaart met listing-nodes (kleur per status: groen/goud/rood/grijs)
+- Huis-cards direct op de kaart (HTML-markers) met foto, naam, wijk en status-tag
+  - Max 6 uitgevouwen tegelijk (op prioriteit); rest is een dot, hover vouwt 'm uit (en klapt de laagste prioriteit in)
+  - Hover = gouden outline; klik = inzoomen + naar voorgrond + detailpaneel
+  - Foto's + wijk/straat/postcode/bio uit `src/lib/houses.ts` (staging-pack-v1), bestanden in `public/houses/`
 - Locatie-readout linksonder (stad/straat/postcode/wijk i.p.v. coördinaten)
 - Initiële load via REST (`/api/v1/spatial/nodes`)
 - Live updates via WebSocket (`/ws`, elke 10s snapshot)

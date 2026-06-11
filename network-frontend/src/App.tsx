@@ -7,7 +7,7 @@ import { Metrics } from './components/Metrics'
 import { NetworkMap } from './components/NetworkMap'
 import { useNetworkNodes } from './hooks/useNetworkNodes'
 import { useI18n } from './i18n'
-import type { ListingNode } from './types'
+import { enrichNode, type EnrichedNode } from './lib/houses'
 import {
   cityFromUrl,
   getCity,
@@ -30,20 +30,21 @@ function App() {
     writeCityToUrl(city?.id ?? null)
   }, [city])
 
-  const handleSelectNode = useCallback((node: ListingNode | null) => {
+  const handleSelectNode = useCallback((node: EnrichedNode | null) => {
     setSelectedId(node?.id ?? null)
   }, [])
 
-  const plotted = nodes.filter((n) => n.has_coordinates).length
+  const enriched = useMemo<EnrichedNode[]>(() => nodes.map(enrichNode), [nodes])
+  const plotted = enriched.filter((n) => n.has_coordinates).length
   const selectedNode = useMemo(
-    () => nodes.find((n) => n.id === selectedId) ?? null,
-    [nodes, selectedId],
+    () => enriched.find((n) => n.id === selectedId) ?? null,
+    [enriched, selectedId],
   )
 
   return (
     <div className="app">
       <NetworkMap
-        nodes={nodes}
+        nodes={enriched}
         selectedId={selectedId}
         onSelectNode={handleSelectNode}
         city={city}
@@ -59,9 +60,9 @@ function App() {
         />
 
         <div className="left-rail">
-          <CityOverview city={city} nodes={nodes} onSelect={setCity} />
+          <CityOverview city={city} nodes={enriched} onSelect={setCity} />
           <Metrics
-            nodeCount={nodes.length}
+            nodeCount={enriched.length}
             plottedCount={plotted}
             source={source}
             lastUpdated={lastUpdated}
