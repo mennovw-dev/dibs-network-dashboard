@@ -5,11 +5,12 @@ services:
     ports:
       - "127.0.0.1:8010:8010"
     volumes:
-      - /home/hospi/dibs-staging/tmp/gorm.db:/app/dibs-staging.db:ro
+      # Mount whole tmp so SQLite WAL/SHM stay consistent with gorm.db after seeds.
+      - /home/hospi/dibs-staging/tmp:/app/staging-tmp:ro
     environment:
       - PORT=8010
       - LISTEN_ALL=true
-      - DATABASE_PATH=/app/dibs-staging.db
+      - DATABASE_PATH=/app/staging-tmp/gorm.db
       - GIN_MODE=release
       - CORS_ORIGINS=https://network.dibs-app.nl,http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:8012
     restart: unless-stopped
