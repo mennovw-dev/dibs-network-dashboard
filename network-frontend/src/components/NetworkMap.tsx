@@ -1,19 +1,23 @@
 import { useEffect, useRef } from 'react'
-import maplibregl, { type Map, type Popup } from 'maplibre-gl'
+import maplibregl, { type Map } from 'maplibre-gl'
 import type { ListingNode } from '../types'
 import { nodesToGeoJSON } from '../lib/nodesGeoJSON'
+import { MAP_STATUS_COLORS } from '../lib/status'
 
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
+const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
 const SOURCE_ID = 'listing-nodes'
 
 interface NetworkMapProps {
   nodes: ListingNode[]
+  selectedId: string | null
+  onSelectNode: (node: ListingNode | null) => void
 }
 
-export function NetworkMap({ nodes }: NetworkMapProps) {
+export function NetworkMap({ nodes, selectedId, onSelectNode }: NetworkMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
-  const popupRef = useRef<Popup | null>(null)
+  const nodesRef = useRef(nodes)
+  nodesRef.current = nodes
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -25,14 +29,14 @@ export function NetworkMap({ nodes }: NetworkMapProps) {
       style: MAP_STYLE,
       center: [5.2913, 52.1326],
       zoom: 7,
+      attributionControl: false,
     })
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-right')
-    popupRef.current = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 12,
-    })
+    map.addControl(
+      new maplibregl.AttributionControl({ compact: true }),
+      'bottom-right',
+    )
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
 
     map.on('load', () => {
       map.addSource(SOURCE_ID, {
@@ -46,24 +50,21 @@ export function NetworkMap({ nodes }: NetworkMapProps) {
         source: SOURCE_ID,
         paint: {
           'circle-radius': [
-            'match',
-            ['get', 'status'],
-            'paused',
-            11,
-            'closed',
-            11,
-            0,
+            'case',
+            ['==', ['get', 'id'], selectedId ?? ''],
+            14,
+            ['match', ['get', 'status'], 'paused', 11, 'active', 9, 0],
           ],
           'circle-color': [
             'match',
             ['get', 'status'],
+            'active',
+            MAP_STATUS_COLORS.active,
             'paused',
-            '#eab308',
-            'closed',
-            '#ef4444',
+            MAP_STATUS_COLORS.paused,
             'transparent',
           ],
-          'circle-opacity': 0.35,
+          'circle-opacity': 0.28,
         },
       })
 
@@ -72,63 +73,65 @@ export function NetworkMap({ nodes }: NetworkMapProps) {
         type: 'circle',
         source: SOURCE_ID,
         paint: {
-          'circle-radius': 7,
+          'circle-radius': [
+            'case',
+            ['==', ['get', 'id'], selectedId ?? ''],
+            8,
+            6,
+          ],
           'circle-color': [
             'match',
             ['get', 'status'],
             'active',
-            '#22c55e',
+            MAP_STATUS_COLORS.active,
             'paused',
-            '#ca8a04',
+            MAP_STATUS_COLORS.paused,
             'closed',
-            '#ef4444',
+            MAP_STATUS_COLORS.closed,
             'draft',
-            '#94a3b8',
-            '#38bdf8',
+            MAP_STATUS_COLORS.draft,
+            MAP_STATUS_COLORS.active,
           ],
           'circle-stroke-width': [
-            'match',
-            ['get', 'status'],
-            'paused',
-            2,
-            'closed',
+            'case',
+            ['==', ['get', 'id'], selectedId ?? ''],
             2,
             1,
           ],
-          'circle-stroke-color': '#0f172a',
+          'circle-stroke-color': '#100d0a',
         },
       })
 
-      map.on('mouseenter', 'listing-nodes', (event) => {
-        map.getCanvas().style.cursor = 'pointer'
-        const feature = event.features?.[0]
-        if (!feature || feature.geometry.type !== 'Point') {
+      const pickNode = (featureId: string | number | undefined) => {
+        if (featureId == null) {
+          onSelectNode(null)
           return
         }
+        const node = nodesRef.current.find((n) => n.id === String(featureId))
+        onSelectNode(node ?? null)
+      }
 
-        const props = feature.properties as Record<string, string | number>
-        popupRef.current
-          ?.setLngLat(feature.geometry.coordinates as [number, number])
-          .setHTML(
-            `<strong>${props.name}</strong><br/>${props.city}<br/>Status: ${props.status}<br/>Reacties: ${props.reactions_count}/${props.reactions_max}`,
-          )
-          .addTo(map)
+      map.on('click', 'listing-nodes', (event) => {
+        const feature = event.features?.[0]
+        pickNode(feature?.properties?.id)
+      })
+
+      map.on('mouseenter', 'listing-nodes', () => {
+        map.getCanvas().style.cursor = 'pointer'
       })
 
       map.on('mouseleave', 'listing-nodes', () => {
         map.getCanvas().style.cursor = ''
-        popupRef.current?.remove()
       })
     })
 
     mapRef.current = map
 
     return () => {
-      popupRef.current?.remove()
       map.remove()
       mapRef.current = null
     }
-  }, [])
+  }, [onSelectNode])
 
   useEffect(() => {
     const map = mapRef.current
@@ -140,5 +143,39 @@ export function NetworkMap({ nodes }: NetworkMapProps) {
     source?.setData(nodesToGeoJSON(nodes))
   }, [nodes])
 
-  return <div ref={containerRef} className="network-map" />
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map?.isStyleLoaded()) {
+      return
+    }
+    if (map.getLayer('listing-nodes-halo')) {
+      map.setPaintProperty('listing-nodes-halo', 'circle-radius', [
+        'case',
+        ['==', ['get', 'id'], selectedId ?? ''],
+        14,
+        ['match', ['get', 'status'], 'paused', 11, 'active', 9, 0],
+      ])
+    }
+    if (map.getLayer('listing-nodes')) {
+      map.setPaintProperty('listing-nodes', 'circle-radius', [
+        'case',
+        ['==', ['get', 'id'], selectedId ?? ''],
+        8,
+        6,
+      ])
+      map.setPaintProperty('listing-nodes', 'circle-stroke-width', [
+        'case',
+        ['==', ['get', 'id'], selectedId ?? ''],
+        2,
+        1,
+      ])
+    }
+  }, [selectedId])
+
+  return (
+    <div className="network-map-wrap">
+      <div ref={containerRef} className="network-map" />
+      <div className="map-vignette" aria-hidden="true" />
+    </div>
+  )
 }

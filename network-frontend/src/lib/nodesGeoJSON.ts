@@ -27,17 +27,4 @@ export function nodesToGeoJSON(nodes: ListingNode[]): FeatureCollection<Point> {
   }
 }
 
-export function statusColor(status: string): string {
-  switch (status) {
-    case 'active':
-      return '#22c55e'
-    case 'paused':
-      return '#eab308'
-    case 'closed':
-      return '#ef4444'
-    case 'draft':
-      return '#94a3b8'
-    default:
-      return '#38bdf8'
-  }
-}
+export { MAP_STATUS_COLORS as statusColor } from './status'

@@ -1,0 +1,39 @@
+/* Warm Gold (ap4) + subtle Soft Edge radius (ap5, toned down) */
+:root {
+  --bg: #100d0a;
+  --s1: #181208;
+  --s2: #1e1810;
+  --s3: #33291a;
+  --s4: #3e3120;
+  --fg: #e8e4e0;
+  --fg2: #a09888;
+  --dim: #605848;
+
+  --gold: #b89a5e;
+  --gold-warm: #cbaa6b;
+  --gold-bright: #e2c685;
+  --sand: #b8a080;
+
+  --teal: #5e938e;
+  --teal-deep: #3c615e;
+  --teal-soft: #243b39;
+  --teal-lite: #8fbdb8;
+
+  --red: #e0493a;
+  --red-aged: #7e4f4c;
+  --green: #5fe08a;
+  --green-pine: #2c5a3e;
+
+  --int: #c7a567;
+  --panel-bg: rgba(16, 12, 8, 0.88);
+  --map-vignette: radial-gradient(ellipse at center, transparent 40%, rgba(16, 12, 8, 0.55) 100%);
+
+  --rad: 8px;
+  --rad-card: 10px;
+  --rad-chip: 6px;
+
+  --font-mono: 'Space Mono', ui-monospace, monospace;
+  --font-sans: 'Montserrat', system-ui, sans-serif;
+
+  --shadow-panel: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
