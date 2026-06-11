@@ -105,9 +105,22 @@ export function computeMapLod(input: MapLodInput): MapLodState {
     alwaysRich.add(drawerHighlightId)
   }
 
+  const maxCards = MAP_CONFIG.maxVisibleCards
+
   if (tier === 'sparse') {
-    for (const id of looseLeaves) {
+    const ranked = [...looseLeaves].sort((a, b) => {
+      const nodeA = nodeById.get(a)
+      const nodeB = nodeById.get(b)
+      return listingPriorityScore(nodeB ?? ({ id: b } as EnrichedNode)) -
+        listingPriorityScore(nodeA ?? ({ id: a } as EnrichedNode))
+    })
+    for (const id of ranked.slice(0, maxCards)) {
       cardIds.add(id)
+    }
+    for (const id of looseLeaves) {
+      if (!cardIds.has(id)) {
+        pinOnlyIds.add(id)
+      }
     }
   } else if (tier === 'medium') {
     const ranked = [...looseLeaves].sort((a, b) => {
@@ -132,10 +145,8 @@ export function computeMapLod(input: MapLodInput): MapLodState {
   }
 
   for (const id of alwaysRich) {
-    if (clusterMemberIds.has(id)) {
-      continue
-    }
-    if (tier === 'dense' || pinOnlyIds.has(id)) {
+    // Hover / select / drawer focus may show a card even inside a cluster badge area.
+    if (tier === 'dense' || pinOnlyIds.has(id) || clusterMemberIds.has(id)) {
       cardIds.add(id)
     }
   }

@@ -67,6 +67,7 @@ function App() {
   const handleCloseCluster = useCallback(() => {
     setActiveCluster(null)
     setDrawerHighlightId(null)
+    setSelectedId(null)
   }, [])
 
   const handleTimeWindow = useCallback((next: TimeWindow) => {

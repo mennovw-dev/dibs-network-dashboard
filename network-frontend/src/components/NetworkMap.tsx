@@ -325,6 +325,7 @@ export function NetworkMap({
   computeRef.current = compute
 
   const openClusterGroup = (group: MapClusterGroup) => {
+    onSelectRef.current(null)
     const label = clusterLabel(group, tRef.current)
     onOpenClusterRef.current(clusterSelectionFromGroup(group, label))
     const map = mapRef.current
@@ -339,6 +340,19 @@ export function NetworkMap({
     const map = mapRef.current
     if (map) {
       setClusterHull(map, null)
+    }
+  }
+
+  const dismissMapFocus = () => {
+    const hadCluster = !!activeClusterRef.current
+    const hadSelection = !!selectedRef.current
+    closeCluster()
+    if (hadSelection) {
+      onSelectRef.current(null)
+    }
+    hoveredRef.current = null
+    if (hadCluster || hadSelection) {
+      scheduleLod.current()
     }
   }
 
@@ -369,8 +383,7 @@ export function NetworkMap({
           (isHovered && !inActiveCluster) ||
           (isSelected && !inActiveCluster)
 
-    const isRich =
-      inActiveCluster ? false : isHovered || isSelected || (showCard && lod.tier !== 'dense')
+    const isRich = inActiveCluster ? false : isHovered || isSelected
 
     entry.el.classList.toggle('is-pin-only', !showCard)
     entry.el.classList.toggle('is-rich', isRich)
@@ -472,9 +485,6 @@ export function NetworkMap({
     const active = activeClusterRef.current
     const focusId = drawerHighlightRef.current ?? selectedRef.current
 
-    if (lod.autoOpenGroup && !active) {
-      openClusterGroup(lod.autoOpenGroup)
-    }
     prevZoomRef.current = map.getZoom()
 
     const badgeGroups = active
@@ -714,8 +724,12 @@ export function NetworkMap({
         if (pip(e.lngLat.lng, e.lngLat.lat, ring)) {
           return
         }
-        closeCluster()
-        scheduleLod.current()
+        dismissMapFocus()
+        return
+      }
+
+      if (selectedRef.current) {
+        dismissMapFocus()
         return
       }
 
@@ -781,9 +795,12 @@ export function NetworkMap({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && activeClusterRef.current) {
-        closeCluster()
-        scheduleLod.current()
+      if (e.key !== 'Escape') {
+        return
+      }
+      if (activeClusterRef.current || selectedRef.current) {
+        e.preventDefault()
+        dismissMapFocus()
       }
     }
     window.addEventListener('keydown', onKey)

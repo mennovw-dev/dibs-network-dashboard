@@ -9,11 +9,14 @@ function envInt(key: string, fallback: number): number {
 }
 
 export const MAP_CONFIG = {
-  tierAMaxLeaves: envInt('VITE_TIER_A_MAX_LEAVES', 8),
-  tierBMaxCards: envInt('VITE_TIER_B_MAX_CARDS', 6),
-  tierBMaxLeaves: envInt('VITE_TIER_B_MAX_LEAVES', 22),
+  /** Max listing cards on map at once (excl. hover / select). */
+  maxVisibleCards: envInt('VITE_MAX_VISIBLE_CARDS', 3),
+  tierAMaxLeaves: envInt('VITE_TIER_A_MAX_LEAVES', 3),
+  tierBMaxCards: envInt('VITE_TIER_B_MAX_CARDS', 2),
+  tierBMaxLeaves: envInt('VITE_TIER_B_MAX_LEAVES', 12),
   autoOpenClusterZoom: envInt('VITE_AUTO_OPEN_CLUSTER_ZOOM', 15.25) || 15.25,
-  clusterMinPoints: envInt('VITE_CLUSTER_MIN_POINTS', 4),
+  clusterMinPoints: envInt('VITE_CLUSTER_MIN_POINTS', 3),
+  neighborhoodClusterMin: envInt('VITE_NEIGHBORHOOD_CLUSTER_MIN', 2),
   /** Run LOD + Supercluster in a Web Worker from this node count upward. */
   lodWorkerMinNodes: envInt('VITE_LOD_WORKER_MIN_NODES', 500),
   /** Max React DOM markers (cards) on the map at once. */

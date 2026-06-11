@@ -2,12 +2,8 @@ import type { CompactNode } from './compactNode'
 import { compactToEnriched } from './compactNode'
 import { MAP_CONFIG, type MapConfig } from './mapConfig'
 import { MapClusterIndex, type MapClusterGroup } from './mapClusterIndex'
-import {
-  computeMapLod,
-  shouldAutoOpenCluster,
-  type ClusterSelection,
-  type MapLodTier,
-} from './mapLod'
+import { getNeighborhoodClusters, mergeClusterGroups } from './neighborhoodClusters'
+import { computeMapLod, type ClusterSelection, type MapLodTier } from './mapLod'
 
 export interface LodEngineInput {
   compactNodes: CompactNode[]
@@ -57,7 +53,7 @@ function pickDomMarkerIds(
     push(id)
   }
 
-  return ordered.slice(0, max)
+  return ordered.slice(0, Math.min(max, 8))
 }
 
 /** Pure LOD pipeline — safe to run on main thread or in a worker. */
@@ -70,8 +66,18 @@ export function runLodEngine(input: LodEngineInput): LodEngineResult {
   index.load(enriched)
 
   const features = index.getClustersInView(input.bbox, input.zoom)
-  const leafIds = index.getLeafNodeIds(features)
-  const multiClusters = index.getMultiClusters(features)
+  const hoodClusters = getNeighborhoodClusters(
+    enriched,
+    input.bbox,
+    config.neighborhoodClusterMin,
+  )
+  const scClusters = index.getMultiClusters(features)
+  const multiClusters = mergeClusterGroups(hoodClusters, scClusters)
+
+  const clusteredIds = new Set(multiClusters.flatMap((g) => g.nodeIds))
+  const leafIds = enriched
+    .filter((n) => !clusteredIds.has(n.id))
+    .map((n) => n.id)
   const nodeById = new globalThis.Map(enriched.map((n) => [n.id, n]))
 
   const lod = computeMapLod({
@@ -84,18 +90,6 @@ export function runLodEngine(input: LodEngineInput): LodEngineResult {
     drawerHighlightId: input.drawerHighlightId,
     zoom: input.zoom,
   })
-
-  let autoOpenGroup: MapClusterGroup | null = null
-  if (!input.activeCluster && multiClusters.length > 0) {
-    for (const group of multiClusters) {
-      if (
-        shouldAutoOpenCluster(input.zoom, input.prevZoom, group, input.mapCenter)
-      ) {
-        autoOpenGroup = group
-        break
-      }
-    }
-  }
 
   const domMarkerIds = pickDomMarkerIds(
     lod.cardIds,
@@ -112,7 +106,7 @@ export function runLodEngine(input: LodEngineInput): LodEngineResult {
     clusterMemberIds: [...lod.clusterMemberIds],
     domMarkerIds,
     multiClusters,
-    autoOpenGroup,
+    autoOpenGroup: null,
     elapsedMs: performance.now() - t0,
   }
 }
