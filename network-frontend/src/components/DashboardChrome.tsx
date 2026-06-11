@@ -1,5 +1,6 @@
 import { STATUS_COLORS, STATUS_LABEL_KEYS } from '../lib/status'
 import { useT } from '../i18n'
+import { MapViewToggle, type MapViewMode } from './MapViewToggle'
 import { SettingsMenu } from './SettingsMenu'
 import { TimeToggle } from './TimeToggle'
 
@@ -8,6 +9,8 @@ interface DashboardChromeProps {
   error: string | null
   buildings3d: boolean
   onToggle3d: (value: boolean) => void
+  mapView: MapViewMode
+  onToggleMapView: () => void
   timeActive: boolean
   onToggleTime: () => void
   nodeCount: number
@@ -22,6 +25,8 @@ export function DashboardChrome({
   error,
   buildings3d,
   onToggle3d,
+  mapView,
+  onToggleMapView,
   timeActive,
   onToggleTime,
   nodeCount,
@@ -44,6 +49,7 @@ export function DashboardChrome({
           </div>
         </div>
         <div className="map-bar__right">
+          <MapViewToggle mode={mapView} onToggle={onToggleMapView} />
           <TimeToggle active={timeActive} onToggle={onToggleTime} />
           <SettingsMenu
             buildings3d={buildings3d}

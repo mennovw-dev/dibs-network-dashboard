@@ -7,18 +7,17 @@ import { getAnalytics } from '../lib/analytics'
 import { statusTag } from '../lib/status'
 import { reverseGeocode, streetMatches, type GeoLocation } from '../lib/geocode'
 import type { StreetSelection } from './StreetPanel'
+import type { MapViewMode } from './MapViewToggle'
 import { useT, type TFn } from '../i18n'
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
 const BUILDINGS_LAYER = 'dibs-3d-buildings'
 const BUILDINGS_MIN_ZOOM = 13
-const MAX_EXPANDED = 6
 
-// Card footprint in screen px (must track the CSS card size for collision tests).
-const CARD_W = 176
-const CARD_H = 124
-const CARD_H_RICH = 232
-const CARD_PAD = 8
+// Z-index bands inside the map layer (chrome sits above the whole map wrap).
+const Z_DEPTH_BASE = 10
+const Z_HOVER_BOOST = 5000
+const Z_SELECT_BOOST = 6000
 
 interface NetworkMapProps {
   nodes: EnrichedNode[]
@@ -26,44 +25,10 @@ interface NetworkMapProps {
   onSelectNode: (node: EnrichedNode | null) => void
   city: City | null
   buildings3d: boolean
+  viewMode: MapViewMode
   asOf: number
   onCursorLocation: (loc: GeoLocation | null) => void
   onStreetSelect: (selection: StreetSelection | null) => void
-}
-
-interface Rect {
-  left: number
-  right: number
-  top: number
-  bottom: number
-}
-
-function rectsOverlap(a: Rect, b: Rect): boolean {
-  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom)
-}
-
-function rectContainsPoint(r: Rect, x: number, y: number): boolean {
-  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
-}
-
-const STATUS_ORDER: Record<string, number> = { active: 0, paused: 1, closed: 2, draft: 3 }
-
-function priorityScore(node: EnrichedNode): number {
-  const statusRank = STATUS_ORDER[node.status] ?? 4
-  const listedMs = node.listed_at ? new Date(node.listed_at).getTime() : 0
-  // Lower is better: status first, then most recent listing.
-  return statusRank * 1e13 - listedMs
-}
-
-// Selected card ranks first, hovered second, everything else keeps priority order.
-function frontRank(node: EnrichedNode, selected: string | null, hovered: string | null): number {
-  if (node.id === selected) {
-    return -2
-  }
-  if (node.id === hovered) {
-    return -1
-  }
-  return 0
 }
 
 function addBuildingsLayer(map: Map, visible: boolean) {
@@ -113,19 +78,26 @@ function addBuildingsLayer(map: Map, visible: boolean) {
 
 function buildMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.className = 'house-marker'
+  el.className = 'house-marker is-expanded'
   el.innerHTML = `
     <div class="house-marker__card">
+      <svg class="house-marker__dash" aria-hidden="true" preserveAspectRatio="none">
+        <rect x="1.5" y="1.5" width="97%" height="97%" rx="16" ry="16" />
+      </svg>
       <div class="house-marker__photo"></div>
       <span class="house-marker__state"></span>
       <div class="house-marker__body">
         <span class="house-marker__name"></span>
-        <span class="house-marker__addr"></span>
         <span class="house-marker__wijk"></span>
-        <p class="house-marker__bio"></p>
-        <div class="house-marker__meta">
-          <span class="house-marker__age"></span>
-          <span class="house-marker__views"></span>
+        <div class="house-marker__extra">
+          <div class="house-marker__extra-inner">
+            <span class="house-marker__addr"></span>
+            <p class="house-marker__bio"></p>
+            <div class="house-marker__meta">
+              <span class="house-marker__age"></span>
+              <span class="house-marker__views"></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -161,6 +133,7 @@ export function NetworkMap({
   onSelectNode,
   city,
   buildings3d,
+  viewMode,
   asOf,
   onCursorLocation,
   onStreetSelect,
@@ -177,6 +150,10 @@ export function NetworkMap({
   nodesRef.current = nodes
   const buildings3dRef = useRef(buildings3d)
   buildings3dRef.current = buildings3d
+  const viewModeRef = useRef(viewMode)
+  viewModeRef.current = viewMode
+  const cityRef = useRef(city)
+  cityRef.current = city
   const onSelectRef = useRef(onSelectNode)
   onSelectRef.current = onSelectNode
   const selectedRef = useRef(selectedId)
@@ -193,9 +170,8 @@ export function NetworkMap({
   const cursorTimer = useRef<number | null>(null)
   const cursorAbort = useRef<AbortController | null>(null)
 
-  // Decide which cards expand using SCREEN-SPACE collision detection so expanded
-  // cards never overlap. Selected + hovered get priority; the rest fill up to
-  // MAX_EXPANDED greedily by priority, skipping any that would collide.
+  // Depth-sort markers by screen Y (lower on screen = closer = on top) and
+  // bring hovered / selected cards to the front — no cards disappear.
   const syncMarkerStates = useRef<() => void>(() => {})
   syncMarkerStates.current = () => {
     const map = mapRef.current
@@ -209,77 +185,37 @@ export function NetworkMap({
     const isVisible = (n: EnrichedNode) =>
       !n.listed_at || new Date(n.listed_at).getTime() <= asOfTs
 
-    const withCoords = nodesRef.current.filter(
-      (n) => n.has_coordinates && n.longitude != null && n.latitude != null && isVisible(n),
-    )
-
-    // Priority order, but force selected then hovered to the front.
-    const ranked = [...withCoords].sort((a, b) => priorityScore(a) - priorityScore(b))
-    ranked.sort((a, b) => frontRank(a, selected, hovered) - frontRank(b, selected, hovered))
-
-    // Pre-project every pin so an expanded card can refuse to cover another listing.
-    const pins = withCoords.map((n) => ({
-      id: n.id,
-      pt: map.project([n.longitude!, n.latitude!]),
-    }))
-
-    const makeRect = (x: number, y: number, h: number): Rect => ({
-      left: x - CARD_W / 2 - CARD_PAD,
-      right: x + CARD_W / 2 + CARD_PAD,
-      top: y - h - CARD_PAD,
-      bottom: y + CARD_PAD,
-    })
-
-    const placed: Rect[] = []
-    const expandedIds = new Set<string>()
-
-    for (const node of ranked) {
-      const forced = node.id === selected || node.id === hovered
-      if (!forced && expandedIds.size >= MAX_EXPANDED) {
-        continue
-      }
-      const pin = pins.find((p) => p.id === node.id)!.pt
-      const rect = makeRect(pin.x, pin.y, forced ? CARD_H_RICH : CARD_H)
-
-      if (forced) {
-        // Selected / hovered always expand (intentional focus, drawn on top).
-        expandedIds.add(node.id)
-        placed.push(rect)
-        continue
-      }
-
-      const overlapsCard = placed.some((r) => rectsOverlap(r, rect))
-      // Hard rule: never wall off another listing — a card may not cover any
-      // other listing's pin (its clickable anchor).
-      const coversPin = pins.some(
-        (p) => p.id !== node.id && rectContainsPoint(rect, p.pt.x, p.pt.y),
-      )
-      if (!overlapsCard && !coversPin) {
-        expandedIds.add(node.id)
-        placed.push(rect)
-      }
-    }
-
     for (const node of nodesRef.current) {
       const entry = markersRef.current.get(node.id)
       if (!entry) {
         continue
       }
-      if (!isVisible(node)) {
+      if (!isVisible(node) || !node.has_coordinates || node.longitude == null || node.latitude == null) {
         entry.el.style.display = 'none'
         continue
       }
       entry.el.style.display = ''
-      const isExpanded = expandedIds.has(node.id)
+
       const isSelected = node.id === selected
       const isHovered = node.id === hovered
-      entry.el.classList.toggle('is-expanded', isExpanded)
-      entry.el.classList.toggle('is-collapsed', !isExpanded)
+      const isRich = isSelected || isHovered
+
+      entry.el.classList.add('is-expanded')
+      entry.el.classList.remove('is-collapsed')
+      entry.el.classList.toggle('is-rich', isRich)
       entry.el.classList.toggle('is-selected', isSelected)
+      entry.el.classList.toggle('is-hovered', isHovered)
       entry.el.dataset.status = node.status
-      entry.el.style.zIndex = String(
-        isSelected ? 50 : isHovered ? 40 : isExpanded ? 20 : 10,
-      )
+
+      const pt = map.project([node.longitude, node.latitude])
+      let z = Z_DEPTH_BASE + Math.min(800, Math.floor(pt.y))
+      if (isHovered) {
+        z += Z_HOVER_BOOST
+      }
+      if (isSelected) {
+        z += Z_SELECT_BOOST
+      }
+      entry.el.style.zIndex = String(z)
     }
   }
 
@@ -300,13 +236,14 @@ export function NetworkMap({
       return
     }
     const initial = city ?? { ...NL_VIEW, id: '', name: '' }
+    const start3d = viewModeRef.current === '3d'
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
       center: initial.center,
       zoom: initial.zoom,
-      pitch: initial.pitch,
-      bearing: initial.bearing,
+      pitch: start3d ? initial.pitch : 0,
+      bearing: start3d ? initial.bearing : 0,
       attributionControl: false,
     })
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
@@ -405,14 +342,12 @@ export function NetworkMap({
         el.dataset.id = node.id
         el.addEventListener('mouseenter', () => {
           hoveredRef.current = node.id
-          el.classList.add('is-hovered')
           syncMarkerStates.current()
         })
         el.addEventListener('mouseleave', () => {
           if (hoveredRef.current === node.id) {
             hoveredRef.current = null
           }
-          el.classList.remove('is-hovered')
           syncMarkerStates.current()
         })
         el.addEventListener('click', (ev) => {
@@ -449,21 +384,22 @@ export function NetworkMap({
     syncMarkerStates.current()
   }, [selectedId, nodes, asOf])
 
-  // City change → smooth fly.
+  // City change → smooth fly (respects 2D / 3D view mode).
   useEffect(() => {
     const map = mapRef.current
     if (!map || !city) {
       return
     }
+    const is3d = viewMode === '3d'
     map.flyTo({
       center: city.center,
       zoom: city.zoom,
-      pitch: city.pitch,
-      bearing: city.bearing,
+      pitch: is3d ? city.pitch : 0,
+      bearing: is3d ? city.bearing : 0,
       duration: 1600,
       essential: true,
     })
-  }, [city])
+  }, [city, viewMode])
 
   // Click-to-zoom on selected node.
   useEffect(() => {
@@ -473,28 +409,30 @@ export function NetworkMap({
     }
     const node = nodesRef.current.find((n) => n.id === selectedId)
     if (node?.longitude != null && node?.latitude != null) {
+      const is3d = viewMode === '3d'
       map.flyTo({
         center: [node.longitude, node.latitude],
         zoom: Math.max(map.getZoom(), 15.5),
-        pitch: Math.max(map.getPitch(), 50),
+        pitch: is3d ? Math.max(map.getPitch(), 50) : 0,
         duration: 1200,
         essential: true,
       })
     }
-  }, [selectedId])
+  }, [selectedId, viewMode])
 
-  // 3D toggle.
+  // Building extrusions only in 3D view (when enabled in settings).
   useEffect(() => {
     const map = mapRef.current
     if (!map) {
       return
     }
+    const showBuildings = buildings3d && viewMode === '3d'
     const apply = () => {
       if (!map.getLayer(BUILDINGS_LAYER)) {
-        addBuildingsLayer(map, buildings3d)
+        addBuildingsLayer(map, showBuildings)
       }
       if (map.getLayer(BUILDINGS_LAYER)) {
-        map.setLayoutProperty(BUILDINGS_LAYER, 'visibility', buildings3d ? 'visible' : 'none')
+        map.setLayoutProperty(BUILDINGS_LAYER, 'visibility', showBuildings ? 'visible' : 'none')
       }
     }
     if (map.isStyleLoaded()) {
@@ -502,7 +440,22 @@ export function NetworkMap({
     } else {
       map.once('load', apply)
     }
-  }, [buildings3d])
+  }, [buildings3d, viewMode])
+
+  // Toggle birds-eye ↔ 3D perspective (camera pitch).
+  useEffect(() => {
+    const map = mapRef.current
+    const c = cityRef.current
+    if (!map || !c) {
+      return
+    }
+    const is3d = viewMode === '3d'
+    map.easeTo({
+      pitch: is3d ? c.pitch : 0,
+      bearing: is3d ? c.bearing : 0,
+      duration: 900,
+    })
+  }, [viewMode])
 
   return (
     <div className="network-map-wrap">

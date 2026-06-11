@@ -7,6 +7,7 @@ import { NetworkMap } from './components/NetworkMap'
 import { StatusTabs, matchesStatusFilter, type StatusFilter } from './components/StatusTabs'
 import { StreetPanel, type StreetSelection } from './components/StreetPanel'
 import { Timeline } from './components/Timeline'
+import { type MapViewMode } from './components/MapViewToggle'
 import { type TimeWindow } from './components/ViewSettings'
 import { useNetworkNodes } from './hooks/useNetworkNodes'
 import { useI18n } from './i18n'
@@ -29,6 +30,7 @@ function App() {
     () => cityFromUrl() ?? getCity(DEFAULT_CITY_ID),
   )
   const [buildings3d, setBuildings3d] = useState(true)
+  const [mapView, setMapView] = useState<MapViewMode>('3d')
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('live')
   const [asOf, setAsOf] = useState<number>(() => Date.now())
   const [cursorLoc, setCursorLoc] = useState<GeoLocation | null>(null)
@@ -53,6 +55,10 @@ function App() {
     setAsOf(Date.now())
   }, [])
 
+  const handleToggleMapView = useCallback(() => {
+    setMapView((prev) => (prev === '3d' ? '2d' : '3d'))
+  }, [])
+
   const enriched = useMemo<EnrichedNode[]>(() => nodes.map(enrichNode), [nodes])
   const visibleNodes = useMemo(
     () => enriched.filter((n) => matchesStatusFilter(n, statusFilter)),
@@ -75,6 +81,7 @@ function App() {
         onSelectNode={handleSelectNode}
         city={city}
         buildings3d={buildings3d}
+        viewMode={mapView}
         asOf={effectiveAsOf}
         onCursorLocation={setCursorLoc}
         onStreetSelect={setStreet}
@@ -86,6 +93,8 @@ function App() {
           error={error}
           buildings3d={buildings3d}
           onToggle3d={setBuildings3d}
+          mapView={mapView}
+          onToggleMapView={handleToggleMapView}
           timeActive={timeWindow !== 'live'}
           onToggleTime={handleToggleTime}
           nodeCount={enriched.length}
