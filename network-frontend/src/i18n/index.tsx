@@ -82,6 +82,8 @@ const nl: Dict = {
   'status.closed': 'Gesloten',
   'status.draft': 'Concept',
   'city.search': 'Zoek stad…',
+  'cluster.title': 'Gebied',
+  'cluster.area': 'Dicht wijkgebied',
 }
 
 const en: Dict = {
@@ -152,6 +154,8 @@ const en: Dict = {
   'status.closed': 'Closed',
   'status.draft': 'Draft',
   'city.search': 'Search city…',
+  'cluster.title': 'Area',
+  'cluster.area': 'Dense neighbourhood',
 }
 
 const DICTS: Record<Lang, Dict> = { nl, en }

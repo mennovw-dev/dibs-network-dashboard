@@ -5,7 +5,9 @@ import { ListingPanel } from './components/ListingPanel'
 import { LocationReadout } from './components/LocationReadout'
 import { NetworkMap } from './components/NetworkMap'
 import { StatusTabs, matchesStatusFilter, type StatusFilter } from './components/StatusTabs'
+import { ClusterDrawer } from './components/ClusterDrawer'
 import { StreetPanel, type StreetSelection } from './components/StreetPanel'
+import type { ClusterSelection } from './lib/mapLod'
 import { Timeline } from './components/Timeline'
 import { type MapViewMode } from './components/MapViewToggle'
 import { type TimeWindow } from './components/ViewSettings'
@@ -35,6 +37,8 @@ function App() {
   const [asOf, setAsOf] = useState<number>(() => Date.now())
   const [cursorLoc, setCursorLoc] = useState<GeoLocation | null>(null)
   const [street, setStreet] = useState<StreetSelection | null>(null)
+  const [activeCluster, setActiveCluster] = useState<ClusterSelection | null>(null)
+  const [drawerHighlightId, setDrawerHighlightId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   useEffect(() => {
@@ -43,6 +47,18 @@ function App() {
 
   const handleSelectNode = useCallback((node: EnrichedNode | null) => {
     setSelectedId(node?.id ?? null)
+  }, [])
+
+  const handleOpenCluster = useCallback((cluster: ClusterSelection | null) => {
+    setActiveCluster(cluster)
+    if (!cluster) {
+      setDrawerHighlightId(null)
+    }
+  }, [])
+
+  const handleCloseCluster = useCallback(() => {
+    setActiveCluster(null)
+    setDrawerHighlightId(null)
   }, [])
 
   const handleTimeWindow = useCallback((next: TimeWindow) => {
@@ -85,6 +101,10 @@ function App() {
         asOf={effectiveAsOf}
         onCursorLocation={setCursorLoc}
         onStreetSelect={setStreet}
+        activeCluster={activeCluster}
+        onOpenCluster={handleOpenCluster}
+        drawerHighlightId={drawerHighlightId}
+        onDrawerHighlight={setDrawerHighlightId}
       />
 
       <div className="map-chrome">
@@ -120,6 +140,15 @@ function App() {
         </div>
 
         <ListingPanel node={selectedNode} onClose={() => setSelectedId(null)} lang={lang} />
+        <ClusterDrawer
+          cluster={activeCluster}
+          lang={lang}
+          selectedId={selectedId}
+          highlightId={drawerHighlightId}
+          onHighlight={setDrawerHighlightId}
+          onPick={setSelectedId}
+          onClose={handleCloseCluster}
+        />
         <LocationReadout location={cursorLoc} active={cursorLoc != null} />
 
         {timeWindow !== 'live' && (

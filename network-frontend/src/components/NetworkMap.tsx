@@ -9,137 +9,26 @@ import { reverseGeocode, streetMatches, type GeoLocation } from '../lib/geocode'
 import type { StreetSelection } from './StreetPanel'
 import type { MapViewMode } from './MapViewToggle'
 import { useT, type TFn } from '../i18n'
+import { MapClusterIndex, type MapClusterGroup } from '../lib/mapClusterIndex'
+import {
+  clusterSelectionFromGroup,
+  computeMapLod,
+  shouldAutoOpenCluster,
+  type ClusterSelection,
+} from '../lib/mapLod'
+import { pointInPolygon as pip } from '../lib/clusterGeo'
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
 const BUILDINGS_LAYER = 'dibs-3d-buildings'
 const BUILDINGS_MIN_ZOOM = 13
+const CLUSTER_HULL_SOURCE = 'dibs-cluster-hull'
+const CLUSTER_HULL_FILL = 'dibs-cluster-hull-fill'
+const CLUSTER_HULL_LINE = 'dibs-cluster-hull-line'
 
-// Z-index bands inside the map layer (chrome sits above the whole map wrap).
 const Z_DEPTH_BASE = 10
 const Z_HOVER_BOOST = 5000
 const Z_SELECT_BOOST = 6000
-
-// Screen-space card footprint (keep in sync with CSS).
-const CARD_W = 176
-const CARD_H = 148
-const CARD_H_RICH = 208
-const PIN_H = 11
-const PIN_GAP = 3
-/** Allow gentle overlap — not a rigid grid, but stay usable. */
-const MAX_OVERLAP = 0.34
-
-interface ScreenRect {
-  left: number
-  right: number
-  top: number
-  bottom: number
-}
-
-interface Offset {
-  ox: number
-  oy: number
-}
-
-function overlapRatio(a: ScreenRect, b: ScreenRect): number {
-  const ox = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
-  const oy = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
-  const hit = ox * oy
-  if (hit <= 0) {
-    return 0
-  }
-  const areaA = (a.right - a.left) * (a.bottom - a.top)
-  const areaB = (b.right - b.left) * (b.bottom - b.top)
-  return hit / Math.min(areaA, areaB)
-}
-
-function cardScreenRect(px: number, py: number, ox: number, oy: number, h: number): ScreenRect {
-  const bottom = py - PIN_H - PIN_GAP + oy
-  const cx = px + ox
-  const half = CARD_W / 2
-  return { left: cx - half, right: cx + half, top: bottom - h, bottom }
-}
-
-/** Organic offsets — prefer up / fan out, not a blocky grid. */
-function* offsetCandidates(): Generator<Offset> {
-  yield { ox: 0, oy: 0 }
-  for (let ring = 1; ring <= 6; ring++) {
-    const d = ring * 24
-    yield { ox: 0, oy: -d }
-    yield { ox: d * 0.7, oy: -d * 0.55 }
-    yield { ox: -d * 0.7, oy: -d * 0.55 }
-    yield { ox: d, oy: -d * 0.15 }
-    yield { ox: -d, oy: -d * 0.15 }
-    yield { ox: d * 0.45, oy: d * 0.4 }
-    yield { ox: -d * 0.45, oy: d * 0.4 }
-    yield { ox: 0, oy: d * 0.25 }
-  }
-}
-
-function pickOffset(px: number, py: number, h: number, placed: ScreenRect[]): Offset {
-  let best: Offset = { ox: 0, oy: 0 }
-  let bestScore = Infinity
-
-  for (const c of offsetCandidates()) {
-    const rect = cardScreenRect(px, py, c.ox, c.oy, h)
-    let peak = 0
-    for (const p of placed) {
-      peak = Math.max(peak, overlapRatio(rect, p))
-    }
-    const dist = Math.hypot(c.ox, c.oy)
-    const score = peak * 900 + dist * 0.12
-    if (peak <= MAX_OVERLAP && score < bestScore) {
-      bestScore = score
-      best = c
-    }
-  }
-
-  if (bestScore === Infinity) {
-    for (const c of offsetCandidates()) {
-      const rect = cardScreenRect(px, py, c.ox, c.oy, h)
-      let peak = 0
-      for (const p of placed) {
-        peak = Math.max(peak, overlapRatio(rect, p))
-      }
-      const score = peak * 400 + Math.hypot(c.ox, c.oy) * 0.15
-      if (score < bestScore) {
-        bestScore = score
-        best = c
-      }
-    }
-  }
-
-  return best
-}
-
-function updateLeaderLine(el: HTMLDivElement, ox: number, oy: number, cardH: number) {
-  const svg = el.querySelector<SVGSVGElement>('.house-marker__leader')
-  const line = el.querySelector<SVGLineElement>('.house-marker__leader line')
-  if (!svg || !line) {
-    return
-  }
-
-  const w = CARD_W
-  const totalH = cardH + PIN_H + PIN_GAP + 6
-  svg.setAttribute('width', String(w))
-  svg.setAttribute('height', String(totalH))
-
-  const pinX = w / 2
-  const pinY = cardH + PIN_GAP + PIN_H / 2
-  const cardX = w / 2 + ox
-  const cardY = cardH + oy
-  const dist = Math.hypot(cardX - pinX, cardY - pinY)
-
-  const show = dist > 8
-  el.classList.toggle('is-offset', show)
-  if (!show) {
-    return
-  }
-
-  line.setAttribute('x1', String(pinX))
-  line.setAttribute('y1', String(pinY))
-  line.setAttribute('x2', String(cardX))
-  line.setAttribute('y2', String(cardY))
-}
+const Z_DRAWER_FOCUS_BOOST = 4500
 
 interface NetworkMapProps {
   nodes: EnrichedNode[]
@@ -151,6 +40,10 @@ interface NetworkMapProps {
   asOf: number
   onCursorLocation: (loc: GeoLocation | null) => void
   onStreetSelect: (selection: StreetSelection | null) => void
+  activeCluster: ClusterSelection | null
+  onOpenCluster: (cluster: ClusterSelection | null) => void
+  drawerHighlightId: string | null
+  onDrawerHighlight: (id: string | null) => void
 }
 
 function addBuildingsLayer(map: Map, visible: boolean) {
@@ -198,13 +91,54 @@ function addBuildingsLayer(map: Map, visible: boolean) {
   })
 }
 
+function ensureClusterHullLayers(map: Map) {
+  if (!map.getSource(CLUSTER_HULL_SOURCE)) {
+    map.addSource(CLUSTER_HULL_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    })
+  }
+  if (!map.getLayer(CLUSTER_HULL_FILL)) {
+    map.addLayer({
+      id: CLUSTER_HULL_FILL,
+      type: 'fill',
+      source: CLUSTER_HULL_SOURCE,
+      paint: {
+        'fill-color': 'rgba(255, 200, 97, 0.06)',
+        'fill-opacity': 1,
+      },
+    })
+  }
+  if (!map.getLayer(CLUSTER_HULL_LINE)) {
+    map.addLayer({
+      id: CLUSTER_HULL_LINE,
+      type: 'line',
+      source: CLUSTER_HULL_SOURCE,
+      paint: {
+        'line-color': 'rgba(255, 200, 97, 0.42)',
+        'line-width': 1.5,
+        'line-dasharray': [2, 2],
+      },
+    })
+  }
+}
+
+function setClusterHull(map: Map, polygon: GeoJSON.Polygon | null) {
+  ensureClusterHullLayers(map)
+  const data: GeoJSON.FeatureCollection = polygon
+    ? {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', geometry: polygon, properties: {} }],
+      }
+    : { type: 'FeatureCollection', features: [] }
+  const src = map.getSource(CLUSTER_HULL_SOURCE) as maplibregl.GeoJSONSource
+  src?.setData(data)
+}
+
 function buildMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
   el.className = 'house-marker is-expanded'
   el.innerHTML = `
-    <svg class="house-marker__leader" aria-hidden="true">
-      <line />
-    </svg>
     <div class="house-marker__card">
       <div class="house-marker__photo"></div>
       <span class="house-marker__state"></span>
@@ -227,7 +161,15 @@ function buildMarkerEl(): HTMLDivElement {
   return el
 }
 
-/** First sentence of the bio for the compact card teaser. */
+function buildClusterBadgeEl(count: number): HTMLButtonElement {
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'cluster-badge'
+  btn.setAttribute('aria-label', `${count} listings`)
+  btn.textContent = `+${count}`
+  return btn
+}
+
 function bioTeaser(bio: string): string {
   const text = bio.trim()
   if (!text) {
@@ -274,6 +216,18 @@ function populateMarker(el: HTMLDivElement, node: EnrichedNode, t: TFn) {
   el.querySelector('.house-marker__views')!.textContent = t('marker.views', { n: a.views })
 }
 
+function clusterLabel(group: MapClusterGroup, t: TFn): string {
+  const hood = group.nodes.find((n) => n.neighborhood)?.neighborhood
+  if (hood) {
+    return hood
+  }
+  const street = group.nodes.find((n) => n.street)?.street
+  if (street) {
+    return street
+  }
+  return t('cluster.area')
+}
+
 export function NetworkMap({
   nodes,
   selectedId,
@@ -284,6 +238,10 @@ export function NetworkMap({
   asOf,
   onCursorLocation,
   onStreetSelect,
+  activeCluster,
+  onOpenCluster,
+  drawerHighlightId,
+  onDrawerHighlight,
 }: NetworkMapProps) {
   const t = useT()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -291,7 +249,13 @@ export function NetworkMap({
   const markersRef = useRef<globalThis.Map<string, { marker: Marker; el: HTMLDivElement }>>(
     new globalThis.Map(),
   )
+  const clusterBadgesRef = useRef<
+    globalThis.Map<string, { marker: Marker; el: HTMLButtonElement }>
+  >(new globalThis.Map())
+  const clusterIndexRef = useRef(new MapClusterIndex())
   const hoveredRef = useRef<string | null>(null)
+  const prevZoomRef = useRef<number>(0)
+  const lodRaf = useRef<number | null>(null)
 
   const nodesRef = useRef(nodes)
   nodesRef.current = nodes
@@ -311,97 +275,182 @@ export function NetworkMap({
   onCursorRef.current = onCursorLocation
   const onStreetRef = useRef(onStreetSelect)
   onStreetRef.current = onStreetSelect
+  const activeClusterRef = useRef(activeCluster)
+  activeClusterRef.current = activeCluster
+  const onOpenClusterRef = useRef(onOpenCluster)
+  onOpenClusterRef.current = onOpenCluster
+  const drawerHighlightRef = useRef(drawerHighlightId)
+  drawerHighlightRef.current = drawerHighlightId
+  const onDrawerHighlightRef = useRef(onDrawerHighlight)
+  onDrawerHighlightRef.current = onDrawerHighlight
   const tRef = useRef(t)
   tRef.current = t
-  const declutterRaf = useRef<number | null>(null)
   const cursorTimer = useRef<number | null>(null)
   const cursorAbort = useRef<AbortController | null>(null)
 
-  // Depth-sort + organic screen-space placement (cards fan out with leader lines).
-  const syncMarkerStates = useRef<() => void>(() => {})
-  syncMarkerStates.current = () => {
+  const openClusterGroup = (group: MapClusterGroup) => {
+    const label = clusterLabel(group, tRef.current)
+    onOpenClusterRef.current(clusterSelectionFromGroup(group, label))
+    const map = mapRef.current
+    if (map && group.polygon) {
+      setClusterHull(map, group.polygon)
+    }
+  }
+
+  const closeCluster = () => {
+    onOpenClusterRef.current(null)
+    onDrawerHighlightRef.current(null)
+    const map = mapRef.current
+    if (map) {
+      setClusterHull(map, null)
+    }
+  }
+
+  const syncLod = useRef<() => void>(() => {})
+  syncLod.current = () => {
     const map = mapRef.current
     if (!map) {
       return
     }
+
     const hovered = hoveredRef.current
     const selected = selectedRef.current
+    const drawerFocus = drawerHighlightRef.current
+    const active = activeClusterRef.current
     const asOfTs = asOfRef.current
+    const zoom = map.getZoom()
+    const bounds = map.getBounds()
+    const bbox: [number, number, number, number] = [
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth(),
+    ]
 
     const isVisible = (n: EnrichedNode) =>
       !n.listed_at || new Date(n.listed_at).getTime() <= asOfTs
 
-    type Row = {
-      node: EnrichedNode
-      pt: { x: number; y: number }
-      entry: { marker: Marker; el: HTMLDivElement }
-      isRich: boolean
+    const visibleNodes = nodesRef.current.filter(
+      (n) =>
+        isVisible(n) && n.has_coordinates && n.longitude != null && n.latitude != null,
+    )
+
+    clusterIndexRef.current.load(visibleNodes)
+    const nodeById = new globalThis.Map(visibleNodes.map((n) => [n.id, n]))
+
+    const features = clusterIndexRef.current.getClustersInView(bbox, zoom)
+    const leafIds = clusterIndexRef.current.getLeafNodeIds(features)
+    const multiClusters = clusterIndexRef.current.getMultiClusters(features)
+
+    const lod = computeMapLod({
+      leafIds,
+      multiClusters,
+      nodeById,
+      activeCluster: active,
+      hoveredId: hovered,
+      selectedId: selected,
+      drawerHighlightId: drawerFocus,
+      zoom,
+    })
+
+    // Auto-open drawer when user zooms into a dense hull.
+    if (!active && multiClusters.length > 0) {
+      const center = map.getCenter()
+      for (const group of multiClusters) {
+        if (
+          shouldAutoOpenCluster(zoom, prevZoomRef.current, group, [
+            center.lng,
+            center.lat,
+          ])
+        ) {
+          openClusterGroup(group)
+          break
+        }
+      }
+    }
+    prevZoomRef.current = zoom
+
+    // Cluster badges (hidden while drawer is open for that cluster).
+    const badgeGroups = active
+      ? multiClusters.filter((g) => g.id !== active.id)
+      : multiClusters
+    const seenBadges = new Set<string>()
+    for (const group of badgeGroups) {
+      seenBadges.add(group.id)
+      let entry = clusterBadgesRef.current.get(group.id)
+      if (!entry) {
+        const el = buildClusterBadgeEl(group.count)
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation()
+          openClusterGroup(group)
+        })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat(group.center)
+          .addTo(map)
+        entry = { marker, el }
+        clusterBadgesRef.current.set(group.id, entry)
+      } else {
+        entry.marker.setLngLat(group.center)
+        entry.el.textContent = `+${group.count}`
+      }
+    }
+    for (const [id, entry] of clusterBadgesRef.current) {
+      if (!seenBadges.has(id)) {
+        entry.marker.remove()
+        clusterBadgesRef.current.delete(id)
+      }
     }
 
-    const rows: Row[] = []
-    for (const node of nodesRef.current) {
+    if (active?.polygon) {
+      setClusterHull(map, active.polygon)
+    } else if (!active) {
+      setClusterHull(map, null)
+    }
+
+    const focusId = drawerFocus ?? selected
+    const inActiveCluster = active
+      ? new Set(active.nodes.map((n) => n.id))
+      : null
+
+    for (const node of visibleNodes) {
       const entry = markersRef.current.get(node.id)
       if (!entry) {
         continue
       }
-      if (!isVisible(node) || !node.has_coordinates || node.longitude == null || node.latitude == null) {
-        entry.el.style.display = 'none'
-        continue
-      }
       entry.el.style.display = ''
-      const isRich = node.id === selected || node.id === hovered
-      rows.push({
-        node,
-        pt: map.project([node.longitude, node.latitude]),
-        entry,
-        isRich,
-      })
-    }
 
-    // Place back → front; focus card stays on its pin.
-    const placementOrder = [...rows].sort((a, b) => {
-      const focus = (id: string) => (id === selected ? 2 : id === hovered ? 1 : 0)
-      const fa = focus(a.node.id)
-      const fb = focus(b.node.id)
-      if (fa !== fb) {
-        return fa - fb
-      }
-      return a.pt.y - b.pt.y
-    })
-
-    const placed: ScreenRect[] = []
-    const offsets = new globalThis.Map<string, Offset>()
-
-    for (const { node, pt, isRich } of placementOrder) {
-      const h = isRich ? CARD_H_RICH : CARD_H
-      const off =
-        isRich ? { ox: 0, oy: 0 } : pickOffset(pt.x, pt.y, h, placed)
-      offsets.set(node.id, off)
-      placed.push(cardScreenRect(pt.x, pt.y, off.ox, off.oy, h))
-    }
-
-    for (const { node, pt, entry, isRich } of rows) {
+      const pt = map.project([node.longitude!, node.latitude!])
       const isSelected = node.id === selected
       const isHovered = node.id === hovered
-      const off = offsets.get(node.id) ?? { ox: 0, oy: 0 }
-      const cardH = isRich ? CARD_H_RICH : CARD_H
+      const isDrawerFocus = node.id === focusId
+      const isClusterMember = lod.clusterMemberIds.has(node.id)
+      const inOpenCluster = inActiveCluster?.has(node.id) ?? false
 
-      entry.el.classList.add('is-expanded')
-      entry.el.classList.remove('is-collapsed')
+      const showCard =
+        inOpenCluster
+          ? false
+          : lod.cardIds.has(node.id) || (isHovered && !inOpenCluster) || (isSelected && !inOpenCluster)
+
+      const isRich =
+        inOpenCluster
+          ? false
+          : isHovered || isSelected || (showCard && lod.tier !== 'dense')
+
+      const isPinOnly = !showCard
+
+      entry.el.classList.toggle('is-pin-only', isPinOnly)
       entry.el.classList.toggle('is-rich', isRich)
       entry.el.classList.toggle('is-selected', isSelected)
-      entry.el.classList.toggle('is-hovered', isHovered)
+      entry.el.classList.toggle('is-hovered', isHovered && !inOpenCluster)
+      entry.el.classList.toggle('is-drawer-focus', inOpenCluster && isDrawerFocus)
+      entry.el.classList.toggle('is-cluster-member', isClusterMember && !inOpenCluster)
       entry.el.dataset.status = node.status
       setMarkerBio(entry.el, isRich)
 
-      const card = entry.el.querySelector<HTMLElement>('.house-marker__card')
-      if (card) {
-        card.style.setProperty('--ox', `${off.ox}px`)
-        card.style.setProperty('--oy', `${off.oy}px`)
-      }
-      updateLeaderLine(entry.el, off.ox, off.oy, cardH)
-
       let z = Z_DEPTH_BASE + Math.min(800, Math.floor(pt.y))
+      if (isDrawerFocus) {
+        z += Z_DRAWER_FOCUS_BOOST
+      }
       if (isHovered) {
         z += Z_HOVER_BOOST
       }
@@ -410,20 +459,25 @@ export function NetworkMap({
       }
       entry.el.style.zIndex = String(z)
     }
+
+    for (const [id, entry] of markersRef.current) {
+      if (!nodeById.has(id)) {
+        entry.el.style.display = 'none'
+      }
+    }
   }
 
-  const scheduleDeclutter = useRef<() => void>(() => {})
-  scheduleDeclutter.current = () => {
-    if (declutterRaf.current != null) {
+  const scheduleLod = useRef<() => void>(() => {})
+  scheduleLod.current = () => {
+    if (lodRaf.current != null) {
       return
     }
-    declutterRaf.current = requestAnimationFrame(() => {
-      declutterRaf.current = null
-      syncMarkerStates.current()
+    lodRaf.current = requestAnimationFrame(() => {
+      lodRaf.current = null
+      syncLod.current()
     })
   }
 
-  // Init the map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
       return
@@ -444,14 +498,14 @@ export function NetworkMap({
 
     map.on('load', () => {
       addBuildingsLayer(map, buildings3dRef.current)
-      syncMarkerStates.current()
+      ensureClusterHullLayers(map)
+      prevZoomRef.current = map.getZoom()
+      syncLod.current()
     })
 
-    // Re-run collision decluttering whenever the view changes.
-    map.on('move', () => scheduleDeclutter.current())
-    map.on('zoom', () => scheduleDeclutter.current())
+    map.on('move', () => scheduleLod.current())
+    map.on('zoom', () => scheduleLod.current())
 
-    // Live cursor location (debounced reverse geocode).
     map.on('mousemove', (e) => {
       if (cursorTimer.current != null) {
         window.clearTimeout(cursorTimer.current)
@@ -475,11 +529,21 @@ export function NetworkMap({
     })
 
     map.on('click', (e) => {
-      // Clicking a marker is handled by the marker; clicking empty map opens the
-      // street view (entries on that street) and clears node selection.
-      if ((e.originalEvent.target as HTMLElement)?.closest('.house-marker')) {
+      if ((e.originalEvent.target as HTMLElement)?.closest('.house-marker, .cluster-badge')) {
         return
       }
+
+      const active = activeClusterRef.current
+      if (active?.polygon) {
+        const ring = active.polygon.coordinates[0]
+        if (pip(e.lngLat.lng, e.lngLat.lat, ring)) {
+          return
+        }
+        closeCluster()
+        scheduleLod.current()
+        return
+      }
+
       onSelectRef.current(null)
       reverseGeocode(e.lngLat.lat, e.lngLat.lng)
         .then((loc) => {
@@ -499,15 +563,19 @@ export function NetworkMap({
 
     mapRef.current = map
     return () => {
-      if (declutterRaf.current != null) {
-        cancelAnimationFrame(declutterRaf.current)
-        declutterRaf.current = null
+      if (lodRaf.current != null) {
+        cancelAnimationFrame(lodRaf.current)
+        lodRaf.current = null
       }
       if (cursorTimer.current != null) {
         window.clearTimeout(cursorTimer.current)
         cursorTimer.current = null
       }
       cursorAbort.current?.abort()
+      for (const entry of clusterBadgesRef.current.values()) {
+        entry.marker.remove()
+      }
+      clusterBadgesRef.current.clear()
       map.remove()
       mapRef.current = null
       markersRef.current.clear()
@@ -515,7 +583,6 @@ export function NetworkMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Create / update / remove markers when nodes change.
   useEffect(() => {
     const map = mapRef.current
     if (!map) {
@@ -535,17 +602,29 @@ export function NetworkMap({
         el.dataset.id = node.id
         el.addEventListener('mouseenter', () => {
           hoveredRef.current = node.id
-          syncMarkerStates.current()
+          if (activeClusterRef.current?.nodes.some((n) => n.id === node.id)) {
+            onDrawerHighlightRef.current(node.id)
+          }
+          syncLod.current()
         })
         el.addEventListener('mouseleave', () => {
           if (hoveredRef.current === node.id) {
             hoveredRef.current = null
           }
-          syncMarkerStates.current()
+          if (
+            activeClusterRef.current?.nodes.some((n) => n.id === node.id) &&
+            drawerHighlightRef.current === node.id
+          ) {
+            onDrawerHighlightRef.current(null)
+          }
+          syncLod.current()
         })
         el.addEventListener('click', (ev) => {
           ev.stopPropagation()
           const current = nodesRef.current.find((n) => n.id === node.id)
+          if (activeClusterRef.current?.nodes.some((n) => n.id === node.id)) {
+            onDrawerHighlightRef.current(node.id)
+          }
           onSelectRef.current(current ?? null)
         })
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
@@ -557,11 +636,9 @@ export function NetworkMap({
         entry.marker.setLngLat([node.longitude, node.latitude])
       }
 
-      // Update content.
       populateMarker(entry.el, node, tRef.current)
     }
 
-    // Remove stale markers.
     for (const [id, entry] of markersRef.current) {
       if (!seen.has(id)) {
         entry.marker.remove()
@@ -569,15 +646,33 @@ export function NetworkMap({
       }
     }
 
-    syncMarkerStates.current()
+    syncLod.current()
   }, [nodes])
 
-  // Re-sync visual states when selection, data or the time cursor changes.
   useEffect(() => {
-    syncMarkerStates.current()
-  }, [selectedId, nodes, asOf])
+    syncLod.current()
+  }, [selectedId, nodes, asOf, activeCluster, drawerHighlightId])
 
-  // City change → smooth fly (respects 2D / 3D view mode).
+  useEffect(() => {
+    if (!activeCluster) {
+      const map = mapRef.current
+      if (map?.isStyleLoaded()) {
+        setClusterHull(map, null)
+      }
+    }
+  }, [activeCluster])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeClusterRef.current) {
+        closeCluster()
+        scheduleLod.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   useEffect(() => {
     const map = mapRef.current
     if (!map || !city) {
@@ -594,7 +689,6 @@ export function NetworkMap({
     })
   }, [city, viewMode])
 
-  // Click-to-zoom on selected node.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !selectedId) {
@@ -613,7 +707,6 @@ export function NetworkMap({
     }
   }, [selectedId, viewMode])
 
-  // Building extrusions only in 3D view (when enabled in settings).
   useEffect(() => {
     const map = mapRef.current
     if (!map) {
@@ -635,7 +728,6 @@ export function NetworkMap({
     }
   }, [buildings3d, viewMode])
 
-  // Toggle birds-eye ↔ 3D perspective (camera pitch).
   useEffect(() => {
     const map = mapRef.current
     const c = cityRef.current
