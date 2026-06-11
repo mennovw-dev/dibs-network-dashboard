@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import maplibregl, { type Map, type Marker } from 'maplibre-gl'
 import type { City } from '../lib/cities'
 import { NL_VIEW } from '../lib/cities'
@@ -11,12 +11,29 @@ const BUILDINGS_LAYER = 'dibs-3d-buildings'
 const BUILDINGS_MIN_ZOOM = 13
 const MAX_EXPANDED = 6
 
+// Card footprint in screen px (must track the CSS card size for collision tests).
+const CARD_W = 168
+const CARD_H = 124
+const CARD_H_SELECTED = 168
+const CARD_PAD = 8
+
 interface NetworkMapProps {
   nodes: EnrichedNode[]
   selectedId: string | null
   onSelectNode: (node: EnrichedNode | null) => void
   city: City | null
   buildings3d: boolean
+}
+
+interface Rect {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+function rectsOverlap(a: Rect, b: Rect): boolean {
+  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom)
 }
 
 const STATUS_ORDER: Record<string, number> = { active: 0, paused: 1, closed: 2, draft: 3 }
@@ -26,6 +43,17 @@ function priorityScore(node: EnrichedNode): number {
   const listedMs = node.listed_at ? new Date(node.listed_at).getTime() : 0
   // Lower is better: status first, then most recent listing.
   return statusRank * 1e13 - listedMs
+}
+
+// Selected card ranks first, hovered second, everything else keeps priority order.
+function frontRank(node: EnrichedNode, selected: string | null, hovered: string | null): number {
+  if (node.id === selected) {
+    return -2
+  }
+  if (node.id === hovered) {
+    return -1
+  }
+  return 0
 }
 
 function addBuildingsLayer(map: Map, visible: boolean) {
@@ -111,44 +139,52 @@ export function NetworkMap({
   buildings3dRef.current = buildings3d
   const onSelectRef = useRef(onSelectNode)
   onSelectRef.current = onSelectNode
+  const selectedRef = useRef(selectedId)
+  selectedRef.current = selectedId
   const tRef = useRef(t)
   tRef.current = t
+  const declutterRaf = useRef<number | null>(null)
 
-  // Which nodes are expanded by default (top N by priority).
-  const baseExpanded = useMemo(() => {
-    const sorted = [...nodes].filter((n) => n.has_coordinates).sort(
-      (a, b) => priorityScore(a) - priorityScore(b),
-    )
-    return new Set(sorted.slice(0, MAX_EXPANDED).map((n) => n.id))
-  }, [nodes])
-
-  const lowestPriorityExpanded = useMemo(() => {
-    let worst: EnrichedNode | null = null
-    for (const n of nodes) {
-      if (!baseExpanded.has(n.id)) {
-        continue
-      }
-      if (!worst || priorityScore(n) > priorityScore(worst)) {
-        worst = n
-      }
-    }
-    return worst?.id ?? null
-  }, [nodes, baseExpanded])
-
-  // Apply collapsed/expanded/selected/hovered classes + content to all markers.
+  // Decide which cards expand using SCREEN-SPACE collision detection so expanded
+  // cards never overlap. Selected + hovered get priority; the rest fill up to
+  // MAX_EXPANDED greedily by priority, skipping any that would collide.
   const syncMarkerStates = useRef<() => void>(() => {})
   syncMarkerStates.current = () => {
-    const hovered = hoveredRef.current
-    const expanded = new Set(baseExpanded)
-    // Hovering a collapsed card expands it and bumps the lowest-priority one out.
-    if (hovered && !expanded.has(hovered)) {
-      if (lowestPriorityExpanded) {
-        expanded.delete(lowestPriorityExpanded)
-      }
-      expanded.add(hovered)
+    const map = mapRef.current
+    if (!map) {
+      return
     }
-    if (selectedId) {
-      expanded.add(selectedId)
+    const hovered = hoveredRef.current
+    const selected = selectedRef.current
+
+    const withCoords = nodesRef.current.filter(
+      (n) => n.has_coordinates && n.longitude != null && n.latitude != null,
+    )
+
+    // Priority order, but force selected then hovered to the front.
+    const ranked = [...withCoords].sort((a, b) => priorityScore(a) - priorityScore(b))
+    ranked.sort((a, b) => frontRank(a, selected, hovered) - frontRank(b, selected, hovered))
+
+    const placed: Rect[] = []
+    const expandedIds = new Set<string>()
+
+    for (const node of ranked) {
+      if (expandedIds.size >= MAX_EXPANDED) {
+        break
+      }
+      const p = map.project([node.longitude!, node.latitude!])
+      const isSel = node.id === selected
+      const h = isSel ? CARD_H_SELECTED : CARD_H
+      const rect: Rect = {
+        left: p.x - CARD_W / 2 - CARD_PAD,
+        right: p.x + CARD_W / 2 + CARD_PAD,
+        top: p.y - h - CARD_PAD,
+        bottom: p.y + CARD_PAD,
+      }
+      if (!placed.some((r) => rectsOverlap(r, rect))) {
+        expandedIds.add(node.id)
+        placed.push(rect)
+      }
     }
 
     for (const node of nodesRef.current) {
@@ -156,8 +192,8 @@ export function NetworkMap({
       if (!entry) {
         continue
       }
-      const isExpanded = expanded.has(node.id)
-      const isSelected = node.id === selectedId
+      const isExpanded = expandedIds.has(node.id)
+      const isSelected = node.id === selected
       const isHovered = node.id === hovered
       entry.el.classList.toggle('is-expanded', isExpanded)
       entry.el.classList.toggle('is-collapsed', !isExpanded)
@@ -167,6 +203,17 @@ export function NetworkMap({
         isSelected ? 50 : isHovered ? 40 : isExpanded ? 20 : 10,
       )
     }
+  }
+
+  const scheduleDeclutter = useRef<() => void>(() => {})
+  scheduleDeclutter.current = () => {
+    if (declutterRaf.current != null) {
+      return
+    }
+    declutterRaf.current = requestAnimationFrame(() => {
+      declutterRaf.current = null
+      syncMarkerStates.current()
+    })
   }
 
   // Init the map once.
@@ -189,7 +236,12 @@ export function NetworkMap({
 
     map.on('load', () => {
       addBuildingsLayer(map, buildings3dRef.current)
+      syncMarkerStates.current()
     })
+
+    // Re-run collision decluttering whenever the view changes.
+    map.on('move', () => scheduleDeclutter.current())
+    map.on('zoom', () => scheduleDeclutter.current())
 
     map.on('click', (e) => {
       // Clicking empty map clears selection.
@@ -200,6 +252,10 @@ export function NetworkMap({
 
     mapRef.current = map
     return () => {
+      if (declutterRaf.current != null) {
+        cancelAnimationFrame(declutterRaf.current)
+        declutterRaf.current = null
+      }
       map.remove()
       mapRef.current = null
       markersRef.current.clear()
@@ -275,10 +331,10 @@ export function NetworkMap({
     syncMarkerStates.current()
   }, [nodes])
 
-  // Re-sync visual states when selection / expansion changes.
+  // Re-sync visual states when selection changes.
   useEffect(() => {
     syncMarkerStates.current()
-  }, [selectedId, baseExpanded, lowestPriorityExpanded])
+  }, [selectedId, nodes])
 
   // City change → smooth fly.
   useEffect(() => {
