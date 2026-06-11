@@ -11,4 +11,5 @@ services:
       - LISTEN_ALL=true
       - DATABASE_PATH=/app/dibs-staging.db
       - GIN_MODE=release
+      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:8012
     restart: unless-stopped

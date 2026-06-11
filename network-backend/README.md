@@ -7,6 +7,7 @@ Read-only Go/Gin API over de Dibs staging SQLite. Vertaalt listings/houses/react
 | Method | Path | Beschrijving |
 |--------|------|--------------|
 | GET | `/health` | Health check |
+| GET | `/ws` | WebSocket node snapshots (elke 10s) |
 | GET | `/api/v1/spatial/nodes` | Actieve listing-nodes (kaartpunten) |
 | GET | `/api/v1/spatial/overlap` | Nodes + edges binnen een bounding box |
 

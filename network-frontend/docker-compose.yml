@@ -1,0 +1,9 @@
+services:
+  dibs-network-frontend:
+    image: dibs-network-frontend:latest
+    build: .
+    ports:
+      - "127.0.0.1:8012:8012"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
