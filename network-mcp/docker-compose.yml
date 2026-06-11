@@ -10,4 +10,7 @@ services:
       - MCP_PORT=8011
       - MCP_LISTEN_ALL=true
       - STAGING_CONTAINER=dibs-staging-dibs-backend-1
+      - BACKEND_URL=http://host.docker.internal:8010
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped

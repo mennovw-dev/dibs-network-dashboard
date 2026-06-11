@@ -7,6 +7,8 @@ MCP-server voor live observability van de Dibs staging-omgeving. Mijlpaal 1 van 
 | Tool | Beschrijving |
 |------|--------------|
 | `inspect_logs` | Leest recente logs van `dibs-staging-dibs-backend-1` via Docker socket |
+| `spatial_nodes` | Haalt listing-nodes op via `network-backend` |
+| `spatial_overlap` | Haalt nodes + edges in een bounding box op via `network-backend` |
 
 ### `inspect_logs` parameters
 
@@ -69,3 +71,4 @@ Voeg in Cursor MCP-config toe (`.cursor/mcp.json` of Settings → MCP):
 | `MCP_PORT` | `8011` | HTTP-poort |
 | `MCP_LISTEN_ALL` | `false` (lokaal) / `true` (Docker) | Bind op `0.0.0.0` i.p.v. `127.0.0.1` |
 | `STAGING_CONTAINER` | `dibs-staging-dibs-backend-1` | Container voor `inspect_logs` |
+| `BACKEND_URL` | `http://host.docker.internal:8010` | URL van `network-backend` |

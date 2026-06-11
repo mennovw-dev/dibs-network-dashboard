@@ -1,0 +1,14 @@
+services:
+  dibs-network-backend:
+    image: dibs-network-backend:latest
+    build: .
+    ports:
+      - "127.0.0.1:8010:8010"
+    volumes:
+      - /home/hospi/dibs-staging/tmp/gorm.db:/app/dibs-staging.db:ro
+    environment:
+      - PORT=8010
+      - LISTEN_ALL=true
+      - DATABASE_PATH=/app/dibs-staging.db
+      - GIN_MODE=release
+    restart: unless-stopped

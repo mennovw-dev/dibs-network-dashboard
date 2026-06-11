@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"dibs-network-mcp/internal/backend"
 	"dibs-network-mcp/internal/dockerlogs"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -15,6 +16,7 @@ func main() {
 	port := envOr("MCP_PORT", "8011")
 	container := envOr("STAGING_CONTAINER", "dibs-staging-dibs-backend-1")
 	logReader := dockerlogs.NewReader(container)
+	apiClient := backend.NewClient(envOr("BACKEND_URL", "http://host.docker.internal:8010"))
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "dibs-network-mcp",
@@ -27,6 +29,16 @@ func main() {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, params *dockerlogs.InspectLogsParams) (*mcp.CallToolResult, any, error) {
 		return logReader.Inspect(ctx, params)
 	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "spatial_nodes",
+		Description: "Fetch listing nodes from network-backend (GET /api/v1/spatial/nodes)",
+	}, apiClient.SpatialNodes)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "spatial_overlap",
+		Description: "Fetch nodes and interaction edges in a bounding box (GET /api/v1/spatial/overlap)",
+	}, apiClient.SpatialOverlap)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
