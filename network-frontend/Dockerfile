@@ -3,7 +3,9 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# npm install (not ci): npm's strict lockfile check trips over @emnapi optional
+# peer deps pulled in transitively by the build toolchain on Linux.
+RUN npm install --no-audit --no-fund
 
 COPY . .
 RUN npm run build
