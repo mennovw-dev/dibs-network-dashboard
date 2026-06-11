@@ -2,15 +2,12 @@ import type { EnrichedNode } from './houses'
 import { listingPriorityScore } from './listingSort'
 import type { MapClusterGroup } from './mapClusterIndex'
 import { CLUSTER_MIN_POINTS } from './mapClusterIndex'
+import { MAP_CONFIG } from './mapConfig'
 
-/** Tier A: every loose pin may show a card. */
-export const TIER_A_MAX_LEAVES = 8
-/** Tier B: top-K cards on map, rest pin-only until hover. */
-export const TIER_B_MAX_CARDS = 6
-/** Tier B still viable up to this many loose leaves. */
-export const TIER_B_MAX_LEAVES = 22
-/** Auto-open cluster drawer when zooming in past this level. */
-export const AUTO_OPEN_CLUSTER_ZOOM = 15.25
+export const TIER_A_MAX_LEAVES = MAP_CONFIG.tierAMaxLeaves
+export const TIER_B_MAX_CARDS = MAP_CONFIG.tierBMaxCards
+export const TIER_B_MAX_LEAVES = MAP_CONFIG.tierBMaxLeaves
+export const AUTO_OPEN_CLUSTER_ZOOM = MAP_CONFIG.autoOpenClusterZoom
 
 export type MapLodTier = 'sparse' | 'medium' | 'dense' | 'cluster-open'
 

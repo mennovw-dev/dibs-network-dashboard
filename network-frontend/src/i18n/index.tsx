@@ -84,6 +84,8 @@ const nl: Dict = {
   'city.search': 'Zoek stad…',
   'cluster.title': 'Gebied',
   'cluster.area': 'Dicht wijkgebied',
+  'view.reactionHeat': 'Reactie-heatmap',
+  'view.reactionHeat.hint': 'Lokale rode intensiteit (staging)',
 }
 
 const en: Dict = {
@@ -156,6 +158,8 @@ const en: Dict = {
   'city.search': 'Search city…',
   'cluster.title': 'Area',
   'cluster.area': 'Dense neighbourhood',
+  'view.reactionHeat': 'Reaction heatmap',
+  'view.reactionHeat.hint': 'Local red intensity (staging)',
 }
 
 const DICTS: Record<Lang, Dict> = { nl, en }

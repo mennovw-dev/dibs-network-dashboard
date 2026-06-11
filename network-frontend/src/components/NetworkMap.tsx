@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl, { type Map, type Marker } from 'maplibre-gl'
 import type { City } from '../lib/cities'
 import { NL_VIEW } from '../lib/cities'
@@ -9,14 +9,29 @@ import { reverseGeocode, streetMatches, type GeoLocation } from '../lib/geocode'
 import type { StreetSelection } from './StreetPanel'
 import type { MapViewMode } from './MapViewToggle'
 import { useT, type TFn } from '../i18n'
-import { MapClusterIndex, type MapClusterGroup } from '../lib/mapClusterIndex'
+import type { MapClusterGroup } from '../lib/mapClusterIndex'
 import {
   clusterSelectionFromGroup,
-  computeMapLod,
-  shouldAutoOpenCluster,
   type ClusterSelection,
 } from '../lib/mapLod'
 import { pointInPolygon as pip } from '../lib/clusterGeo'
+import { compactFromEnriched } from '../lib/compactNode'
+import { compactNodesToGeoJSON } from '../lib/listingsGeoJSON'
+import {
+  clearListingFeatureStates,
+  ensureListingLayers,
+  ensureReactionHeatmapLayer,
+  LISTINGS_DOTS,
+  setListingFeatureStates,
+  setListingsGeoJSON,
+  setReactionHeatGeoJSON,
+  setReactionHeatmapVisible,
+} from '../lib/mapLayers'
+import { buildReactionHeatPoints } from '../lib/reactionHeatmap'
+import { MAP_CONFIG } from '../lib/mapConfig'
+import type { LodEngineResult } from '../lib/lodCore'
+import { useMapLodEngine } from '../hooks/useMapLodEngine'
+import { perfModeEnabled, PerfHud, type PerfSnapshot } from './PerfHud'
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
 const BUILDINGS_LAYER = 'dibs-3d-buildings'
@@ -44,6 +59,7 @@ interface NetworkMapProps {
   onOpenCluster: (cluster: ClusterSelection | null) => void
   drawerHighlightId: string | null
   onDrawerHighlight: (id: string | null) => void
+  showReactionHeatmap: boolean
 }
 
 function addBuildingsLayer(map: Map, visible: boolean) {
@@ -137,7 +153,7 @@ function setClusterHull(map: Map, polygon: GeoJSON.Polygon | null) {
 
 function buildMarkerEl(): HTMLDivElement {
   const el = document.createElement('div')
-  el.className = 'house-marker is-expanded'
+  el.className = 'house-marker is-expanded house-marker--overlay'
   el.innerHTML = `
     <div class="house-marker__card">
       <div class="house-marker__photo"></div>
@@ -228,6 +244,16 @@ function clusterLabel(group: MapClusterGroup, t: TFn): string {
   return t('cluster.area')
 }
 
+function updateWebglPinFilter(map: Map, domIds: string[]) {
+  if (!map.getLayer(LISTINGS_DOTS)) {
+    return
+  }
+  const filter: maplibregl.FilterSpecification =
+    domIds.length > 0 ? ['!', ['in', ['get', 'id'], ['literal', domIds]]] : true
+  map.setFilter(LISTINGS_DOTS, filter)
+  map.setFilter('dibs-listings-glow', filter)
+}
+
 export function NetworkMap({
   nodes,
   selectedId,
@@ -242,8 +268,10 @@ export function NetworkMap({
   onOpenCluster,
   drawerHighlightId,
   onDrawerHighlight,
+  showReactionHeatmap,
 }: NetworkMapProps) {
   const t = useT()
+  const { compute } = useMapLodEngine()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
   const markersRef = useRef<globalThis.Map<string, { marker: Marker; el: HTMLDivElement }>>(
@@ -252,10 +280,14 @@ export function NetworkMap({
   const clusterBadgesRef = useRef<
     globalThis.Map<string, { marker: Marker; el: HTMLButtonElement }>
   >(new globalThis.Map())
-  const clusterIndexRef = useRef(new MapClusterIndex())
   const hoveredRef = useRef<string | null>(null)
   const prevZoomRef = useRef<number>(0)
   const lodRaf = useRef<number | null>(null)
+  const lodGenRef = useRef(0)
+  const featureStateIdsRef = useRef<string[]>([])
+  const lastLodRef = useRef<LodEngineResult | null>(null)
+  const [perfSnap, setPerfSnap] = useState<PerfSnapshot | null>(null)
+  const showPerf = perfModeEnabled()
 
   const nodesRef = useRef(nodes)
   nodesRef.current = nodes
@@ -283,10 +315,14 @@ export function NetworkMap({
   drawerHighlightRef.current = drawerHighlightId
   const onDrawerHighlightRef = useRef(onDrawerHighlight)
   onDrawerHighlightRef.current = onDrawerHighlight
+  const showHeatRef = useRef(showReactionHeatmap)
+  showHeatRef.current = showReactionHeatmap
   const tRef = useRef(t)
   tRef.current = t
   const cursorTimer = useRef<number | null>(null)
   const cursorAbort = useRef<AbortController | null>(null)
+  const computeRef = useRef(compute)
+  computeRef.current = compute
 
   const openClusterGroup = (group: MapClusterGroup) => {
     const label = clusterLabel(group, tRef.current)
@@ -306,74 +342,144 @@ export function NetworkMap({
     }
   }
 
-  const syncLod = useRef<() => void>(() => {})
-  syncLod.current = () => {
+  const applyDomMarker = (
+    node: EnrichedNode,
+    lod: LodEngineResult,
+    hovered: string | null,
+    selected: string | null,
+    drawerFocus: string | null,
+    map: Map,
+  ) => {
+    const entry = markersRef.current.get(node.id)
+    if (!entry) {
+      return
+    }
+
+    const pt = map.project([node.longitude!, node.latitude!])
+    const isSelected = node.id === selected
+    const isHovered = node.id === hovered
+    const isDrawerFocus = node.id === drawerFocus
+    const inActiveCluster = activeClusterRef.current?.nodes.some((n) => n.id === node.id) ?? false
+    const isClusterMember = lod.clusterMemberIds.includes(node.id)
+
+    const showCard =
+      inActiveCluster
+        ? false
+        : lod.cardIds.includes(node.id) ||
+          (isHovered && !inActiveCluster) ||
+          (isSelected && !inActiveCluster)
+
+    const isRich =
+      inActiveCluster ? false : isHovered || isSelected || (showCard && lod.tier !== 'dense')
+
+    entry.el.classList.toggle('is-pin-only', !showCard)
+    entry.el.classList.toggle('is-rich', isRich)
+    entry.el.classList.toggle('is-selected', isSelected)
+    entry.el.classList.toggle('is-hovered', isHovered && !inActiveCluster)
+    entry.el.classList.toggle('is-drawer-focus', inActiveCluster && isDrawerFocus)
+    entry.el.classList.toggle('is-cluster-member', isClusterMember && !inActiveCluster)
+    entry.el.dataset.status = node.status
+    setMarkerBio(entry.el, isRich)
+
+    let z = Z_DEPTH_BASE + Math.min(800, Math.floor(pt.y))
+    if (isDrawerFocus) {
+      z += Z_DRAWER_FOCUS_BOOST
+    }
+    if (isHovered) {
+      z += Z_HOVER_BOOST
+    }
+    if (isSelected) {
+      z += Z_SELECT_BOOST
+    }
+    entry.el.style.zIndex = String(z)
+  }
+
+  const syncDomMarkerPool = (lod: LodEngineResult, map: Map) => {
+    const nodeById = new globalThis.Map(nodesRef.current.map((n) => [n.id, n]))
+    const domIds = new Set(lod.domMarkerIds)
+    const hovered = hoveredRef.current
+    const selected = selectedRef.current
+    const drawerFocus = drawerHighlightRef.current
+
+    for (const id of domIds) {
+      const node = nodeById.get(id)
+      if (!node?.has_coordinates || node.longitude == null || node.latitude == null) {
+        continue
+      }
+
+      let entry = markersRef.current.get(id)
+      if (!entry) {
+        const el = buildMarkerEl()
+        el.dataset.id = id
+        el.addEventListener('mouseenter', () => {
+          hoveredRef.current = id
+          if (activeClusterRef.current?.nodes.some((n) => n.id === id)) {
+            onDrawerHighlightRef.current(id)
+          }
+          scheduleLod.current()
+        })
+        el.addEventListener('mouseleave', () => {
+          if (hoveredRef.current === id) {
+            hoveredRef.current = null
+          }
+          if (
+            activeClusterRef.current?.nodes.some((n) => n.id === id) &&
+            drawerHighlightRef.current === id
+          ) {
+            onDrawerHighlightRef.current(null)
+          }
+          scheduleLod.current()
+        })
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation()
+          const current = nodesRef.current.find((n) => n.id === id)
+          if (activeClusterRef.current?.nodes.some((n) => n.id === id)) {
+            onDrawerHighlightRef.current(id)
+          }
+          onSelectRef.current(current ?? null)
+        })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([node.longitude, node.latitude])
+          .addTo(map)
+        entry = { marker, el }
+        markersRef.current.set(id, entry)
+      } else {
+        entry.marker.setLngLat([node.longitude, node.latitude])
+      }
+
+      populateMarker(entry.el, node, tRef.current)
+      entry.el.style.display = ''
+      applyDomMarker(node, lod, hovered, selected, drawerFocus, map)
+    }
+
+    for (const [id, entry] of markersRef.current) {
+      if (!domIds.has(id)) {
+        entry.marker.remove()
+        markersRef.current.delete(id)
+      }
+    }
+
+    updateWebglPinFilter(map, [...domIds])
+  }
+
+  const applyLodResult = (lod: LodEngineResult) => {
     const map = mapRef.current
     if (!map) {
       return
     }
 
-    const hovered = hoveredRef.current
-    const selected = selectedRef.current
-    const drawerFocus = drawerHighlightRef.current
+    lastLodRef.current = lod
     const active = activeClusterRef.current
-    const asOfTs = asOfRef.current
-    const zoom = map.getZoom()
-    const bounds = map.getBounds()
-    const bbox: [number, number, number, number] = [
-      bounds.getWest(),
-      bounds.getSouth(),
-      bounds.getEast(),
-      bounds.getNorth(),
-    ]
+    const focusId = drawerHighlightRef.current ?? selectedRef.current
 
-    const isVisible = (n: EnrichedNode) =>
-      !n.listed_at || new Date(n.listed_at).getTime() <= asOfTs
-
-    const visibleNodes = nodesRef.current.filter(
-      (n) =>
-        isVisible(n) && n.has_coordinates && n.longitude != null && n.latitude != null,
-    )
-
-    clusterIndexRef.current.load(visibleNodes)
-    const nodeById = new globalThis.Map(visibleNodes.map((n) => [n.id, n]))
-
-    const features = clusterIndexRef.current.getClustersInView(bbox, zoom)
-    const leafIds = clusterIndexRef.current.getLeafNodeIds(features)
-    const multiClusters = clusterIndexRef.current.getMultiClusters(features)
-
-    const lod = computeMapLod({
-      leafIds,
-      multiClusters,
-      nodeById,
-      activeCluster: active,
-      hoveredId: hovered,
-      selectedId: selected,
-      drawerHighlightId: drawerFocus,
-      zoom,
-    })
-
-    // Auto-open drawer when user zooms into a dense hull.
-    if (!active && multiClusters.length > 0) {
-      const center = map.getCenter()
-      for (const group of multiClusters) {
-        if (
-          shouldAutoOpenCluster(zoom, prevZoomRef.current, group, [
-            center.lng,
-            center.lat,
-          ])
-        ) {
-          openClusterGroup(group)
-          break
-        }
-      }
+    if (lod.autoOpenGroup && !active) {
+      openClusterGroup(lod.autoOpenGroup)
     }
-    prevZoomRef.current = zoom
+    prevZoomRef.current = map.getZoom()
 
-    // Cluster badges (hidden while drawer is open for that cluster).
     const badgeGroups = active
-      ? multiClusters.filter((g) => g.id !== active.id)
-      : multiClusters
+      ? lod.multiClusters.filter((g) => g.id !== active.id)
+      : lod.multiClusters
     const seenBadges = new Set<string>()
     for (const group of badgeGroups) {
       seenBadges.add(group.id)
@@ -407,64 +513,70 @@ export function NetworkMap({
       setClusterHull(map, null)
     }
 
-    const focusId = drawerFocus ?? selected
-    const inActiveCluster = active
-      ? new Set(active.nodes.map((n) => n.id))
-      : null
+    syncDomMarkerPool(lod, map)
 
-    for (const node of visibleNodes) {
-      const entry = markersRef.current.get(node.id)
-      if (!entry) {
-        continue
-      }
-      entry.el.style.display = ''
+    const visibleIds = nodesRef.current
+      .filter((n) => n.has_coordinates)
+      .map((n) => n.id)
+    clearListingFeatureStates(map, featureStateIdsRef.current)
+    setListingFeatureStates(map, visibleIds, {
+      hover: hoveredRef.current,
+      selected: selectedRef.current,
+      focus: focusId,
+    })
+    featureStateIdsRef.current = visibleIds
 
-      const pt = map.project([node.longitude!, node.latitude!])
-      const isSelected = node.id === selected
-      const isHovered = node.id === hovered
-      const isDrawerFocus = node.id === focusId
-      const isClusterMember = lod.clusterMemberIds.has(node.id)
-      const inOpenCluster = inActiveCluster?.has(node.id) ?? false
+    if (showPerf) {
+      setPerfSnap({
+        tier: lod.tier,
+        nodeCount: nodesRef.current.length,
+        domMarkers: lod.domMarkerIds.length,
+        lodMs: lod.elapsedMs,
+        worker: nodesRef.current.length >= MAP_CONFIG.lodWorkerMinNodes,
+      })
+    }
+  }
 
-      const showCard =
-        inOpenCluster
-          ? false
-          : lod.cardIds.has(node.id) || (isHovered && !inOpenCluster) || (isSelected && !inOpenCluster)
-
-      const isRich =
-        inOpenCluster
-          ? false
-          : isHovered || isSelected || (showCard && lod.tier !== 'dense')
-
-      const isPinOnly = !showCard
-
-      entry.el.classList.toggle('is-pin-only', isPinOnly)
-      entry.el.classList.toggle('is-rich', isRich)
-      entry.el.classList.toggle('is-selected', isSelected)
-      entry.el.classList.toggle('is-hovered', isHovered && !inOpenCluster)
-      entry.el.classList.toggle('is-drawer-focus', inOpenCluster && isDrawerFocus)
-      entry.el.classList.toggle('is-cluster-member', isClusterMember && !inOpenCluster)
-      entry.el.dataset.status = node.status
-      setMarkerBio(entry.el, isRich)
-
-      let z = Z_DEPTH_BASE + Math.min(800, Math.floor(pt.y))
-      if (isDrawerFocus) {
-        z += Z_DRAWER_FOCUS_BOOST
-      }
-      if (isHovered) {
-        z += Z_HOVER_BOOST
-      }
-      if (isSelected) {
-        z += Z_SELECT_BOOST
-      }
-      entry.el.style.zIndex = String(z)
+  const runLod = useRef<() => void>(() => {})
+  runLod.current = () => {
+    const map = mapRef.current
+    if (!map) {
+      return
     }
 
-    for (const [id, entry] of markersRef.current) {
-      if (!nodeById.has(id)) {
-        entry.el.style.display = 'none'
-      }
-    }
+    const asOfTs = asOfRef.current
+    const isVisible = (n: EnrichedNode) =>
+      !n.listed_at || new Date(n.listed_at).getTime() <= asOfTs
+
+    const compactNodes = nodesRef.current
+      .filter(
+        (n) =>
+          isVisible(n) && n.has_coordinates && n.longitude != null && n.latitude != null,
+      )
+      .map((n) => compactFromEnriched(n)!)
+
+    const bounds = map.getBounds()
+    const center = map.getCenter()
+    const gen = ++lodGenRef.current
+
+    computeRef
+      .current({
+        compactNodes,
+        bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        zoom: map.getZoom(),
+        prevZoom: prevZoomRef.current,
+        mapCenter: [center.lng, center.lat],
+        hoveredId: hoveredRef.current,
+        selectedId: selectedRef.current,
+        drawerHighlightId: drawerHighlightRef.current,
+        activeCluster: activeClusterRef.current,
+      })
+      .then((result) => {
+        if (gen !== lodGenRef.current) {
+          return
+        }
+        applyLodResult(result)
+      })
   }
 
   const scheduleLod = useRef<() => void>(() => {})
@@ -474,8 +586,31 @@ export function NetworkMap({
     }
     lodRaf.current = requestAnimationFrame(() => {
       lodRaf.current = null
-      syncLod.current()
+      runLod.current()
     })
+  }
+
+  const syncGeoLayers = useRef<() => void>(() => {})
+  syncGeoLayers.current = () => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded()) {
+      return
+    }
+
+    const asOfTs = asOfRef.current
+    const compact = nodesRef.current
+      .filter(
+        (n) =>
+          (!n.listed_at || new Date(n.listed_at).getTime() <= asOfTs) &&
+          n.has_coordinates &&
+          n.longitude != null &&
+          n.latitude != null,
+      )
+      .map((n) => compactFromEnriched(n)!)
+
+    setListingsGeoJSON(map, compactNodesToGeoJSON(compact))
+    setReactionHeatGeoJSON(map, buildReactionHeatPoints(compact))
+    setReactionHeatmapVisible(map, showHeatRef.current)
   }
 
   useEffect(() => {
@@ -499,12 +634,52 @@ export function NetworkMap({
     map.on('load', () => {
       addBuildingsLayer(map, buildings3dRef.current)
       ensureClusterHullLayers(map)
+      ensureListingLayers(map)
+      ensureReactionHeatmapLayer(map)
       prevZoomRef.current = map.getZoom()
-      syncLod.current()
+      syncGeoLayers.current()
+      runLod.current()
     })
 
     map.on('move', () => scheduleLod.current())
     map.on('zoom', () => scheduleLod.current())
+
+    map.on('mousemove', LISTINGS_DOTS, (e) => {
+      map.getCanvas().style.cursor = 'pointer'
+      const f = e.features?.[0]
+      const id = f?.properties?.id as string | undefined
+      if (id && hoveredRef.current !== id) {
+        hoveredRef.current = id
+        if (activeClusterRef.current?.nodes.some((n) => n.id === id)) {
+          onDrawerHighlightRef.current(id)
+        }
+        scheduleLod.current()
+      }
+    })
+
+    map.on('mouseleave', LISTINGS_DOTS, () => {
+      map.getCanvas().style.cursor = ''
+      if (hoveredRef.current) {
+        hoveredRef.current = null
+        onDrawerHighlightRef.current(null)
+        scheduleLod.current()
+      }
+    })
+
+    map.on('click', LISTINGS_DOTS, (e) => {
+      const f = e.features?.[0]
+      const id = f?.properties?.id as string | undefined
+      if (!id) {
+        return
+      }
+      const node = nodesRef.current.find((n) => n.id === id)
+      if (node) {
+        if (activeClusterRef.current?.nodes.some((n) => n.id === id)) {
+          onDrawerHighlightRef.current(id)
+        }
+        onSelectRef.current(node)
+      }
+    })
 
     map.on('mousemove', (e) => {
       if (cursorTimer.current != null) {
@@ -576,82 +751,24 @@ export function NetworkMap({
         entry.marker.remove()
       }
       clusterBadgesRef.current.clear()
+      for (const entry of markersRef.current.values()) {
+        entry.marker.remove()
+      }
+      markersRef.current.clear()
       map.remove()
       mapRef.current = null
-      markersRef.current.clear()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    const map = mapRef.current
-    if (!map) {
-      return
-    }
-    const seen = new Set<string>()
-
-    for (const node of nodes) {
-      if (!node.has_coordinates || node.longitude == null || node.latitude == null) {
-        continue
-      }
-      seen.add(node.id)
-      let entry = markersRef.current.get(node.id)
-
-      if (!entry) {
-        const el = buildMarkerEl()
-        el.dataset.id = node.id
-        el.addEventListener('mouseenter', () => {
-          hoveredRef.current = node.id
-          if (activeClusterRef.current?.nodes.some((n) => n.id === node.id)) {
-            onDrawerHighlightRef.current(node.id)
-          }
-          syncLod.current()
-        })
-        el.addEventListener('mouseleave', () => {
-          if (hoveredRef.current === node.id) {
-            hoveredRef.current = null
-          }
-          if (
-            activeClusterRef.current?.nodes.some((n) => n.id === node.id) &&
-            drawerHighlightRef.current === node.id
-          ) {
-            onDrawerHighlightRef.current(null)
-          }
-          syncLod.current()
-        })
-        el.addEventListener('click', (ev) => {
-          ev.stopPropagation()
-          const current = nodesRef.current.find((n) => n.id === node.id)
-          if (activeClusterRef.current?.nodes.some((n) => n.id === node.id)) {
-            onDrawerHighlightRef.current(node.id)
-          }
-          onSelectRef.current(current ?? null)
-        })
-        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([node.longitude, node.latitude])
-          .addTo(map)
-        entry = { marker, el }
-        markersRef.current.set(node.id, entry)
-      } else {
-        entry.marker.setLngLat([node.longitude, node.latitude])
-      }
-
-      populateMarker(entry.el, node, tRef.current)
-    }
-
-    for (const [id, entry] of markersRef.current) {
-      if (!seen.has(id)) {
-        entry.marker.remove()
-        markersRef.current.delete(id)
-      }
-    }
-
-    syncLod.current()
-  }, [nodes])
+    syncGeoLayers.current()
+    scheduleLod.current()
+  }, [nodes, asOf, showReactionHeatmap])
 
   useEffect(() => {
-    syncLod.current()
-  }, [selectedId, nodes, asOf, activeCluster, drawerHighlightId])
+    scheduleLod.current()
+  }, [selectedId, activeCluster, drawerHighlightId])
 
   useEffect(() => {
     if (!activeCluster) {
@@ -746,6 +863,7 @@ export function NetworkMap({
     <div className="network-map-wrap">
       <div ref={containerRef} className="network-map" />
       <div className="map-vignette" aria-hidden="true" />
+      {showPerf && <PerfHud snapshot={perfSnap} />}
     </div>
   )
 }

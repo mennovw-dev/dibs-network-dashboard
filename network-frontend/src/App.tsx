@@ -22,11 +22,18 @@ import {
   DEFAULT_CITY_ID,
   type City,
 } from './lib/cities'
+import { MAP_CONFIG } from './lib/mapConfig'
+import { loadtestCountFromUrl, mergeWithLoadtest } from './lib/loadtestNodes'
 import './App.css'
 
 function App() {
   const { lang } = useI18n()
-  const { nodes, loading, error, source, lastUpdated } = useNetworkNodes()
+  const { nodes: liveNodes, loading, error, source, lastUpdated } = useNetworkNodes()
+  const loadtestExtra = loadtestCountFromUrl() || MAP_CONFIG.loadtestCount
+  const nodes = useMemo(
+    () => mergeWithLoadtest(liveNodes, loadtestExtra),
+    [liveNodes, loadtestExtra],
+  )
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [city, setCity] = useState<City | null>(
     () => cityFromUrl() ?? getCity(DEFAULT_CITY_ID),
@@ -40,6 +47,7 @@ function App() {
   const [activeCluster, setActiveCluster] = useState<ClusterSelection | null>(null)
   const [drawerHighlightId, setDrawerHighlightId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [showReactionHeatmap, setShowReactionHeatmap] = useState(false)
 
   useEffect(() => {
     writeCityToUrl(city?.id ?? null)
@@ -105,6 +113,7 @@ function App() {
         onOpenCluster={handleOpenCluster}
         drawerHighlightId={drawerHighlightId}
         onDrawerHighlight={setDrawerHighlightId}
+        showReactionHeatmap={showReactionHeatmap}
       />
 
       <div className="map-chrome">
@@ -122,6 +131,8 @@ function App() {
           source={source}
           lastUpdated={lastUpdated}
           lang={lang}
+          showReactionHeatmap={showReactionHeatmap}
+          onToggleReactionHeatmap={setShowReactionHeatmap}
         />
 
         <StatusTabs value={statusFilter} onChange={setStatusFilter} nodes={enriched} />

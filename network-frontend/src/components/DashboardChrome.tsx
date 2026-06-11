@@ -18,6 +18,8 @@ interface DashboardChromeProps {
   source: string | null
   lastUpdated: Date | null
   lang: string
+  showReactionHeatmap: boolean
+  onToggleReactionHeatmap: (value: boolean) => void
 }
 
 export function DashboardChrome({
@@ -34,6 +36,8 @@ export function DashboardChrome({
   source,
   lastUpdated,
   lang,
+  showReactionHeatmap,
+  onToggleReactionHeatmap,
 }: DashboardChromeProps) {
   const t = useT()
 
@@ -54,6 +58,8 @@ export function DashboardChrome({
           <SettingsMenu
             buildings3d={buildings3d}
             onToggle3d={onToggle3d}
+            showReactionHeatmap={showReactionHeatmap}
+            onToggleReactionHeatmap={onToggleReactionHeatmap}
             nodeCount={nodeCount}
             plottedCount={plottedCount}
             source={source}

@@ -6,6 +6,8 @@ import { Metrics } from './Metrics'
 interface SettingsMenuProps {
   buildings3d: boolean
   onToggle3d: (value: boolean) => void
+  showReactionHeatmap: boolean
+  onToggleReactionHeatmap: (value: boolean) => void
   nodeCount: number
   plottedCount: number
   source: string | null
@@ -16,6 +18,8 @@ interface SettingsMenuProps {
 export function SettingsMenu({
   buildings3d,
   onToggle3d,
+  showReactionHeatmap,
+  onToggleReactionHeatmap,
   nodeCount,
   plottedCount,
   source,
@@ -86,6 +90,21 @@ export function SettingsMenu({
                 aria-checked={buildings3d}
                 className={`switch ${buildings3d ? 'is-on' : ''}`}
                 onClick={() => onToggle3d(!buildings3d)}
+              >
+                <span className="switch__knob" />
+              </button>
+            </label>
+            <label className="settings-row">
+              <span className="settings-row__label">
+                {t('view.reactionHeat')}
+                <span className="settings-row__hint">{t('view.reactionHeat.hint')}</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showReactionHeatmap}
+                className={`switch ${showReactionHeatmap ? 'is-on' : ''}`}
+                onClick={() => onToggleReactionHeatmap(!showReactionHeatmap)}
               >
                 <span className="switch__knob" />
               </button>
