@@ -1,7 +1,20 @@
-# Build dist locally first: npm run build
-FROM nginx:alpine
+FROM node:22-alpine AS build
 
-COPY dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+FROM node:22-alpine
+
+RUN npm install -g serve@14
+
+WORKDIR /app
+COPY --from=build /app/dist ./dist
 
 EXPOSE 8012
+
+CMD ["serve", "-s", "dist", "-l", "8012"]

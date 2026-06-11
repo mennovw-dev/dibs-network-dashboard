@@ -29,15 +29,20 @@ npm run build
 
 ## VPS deploy (statisch)
 
+Geen Node/npm op de VPS nodig — de Docker build doet alles (Node 22 in de image):
+
 ```bash
-npm run build
-cd network-frontend
 docker compose up -d --build
 ```
 
-Dashboard: http://127.0.0.1:8012 (via SSH-tunnel: `ssh -L 8012:127.0.0.1:8012 ...`)
+Lokaal ontwikkelen/builden kan ook op je Windows-machine (`npm run build`), maar de VPS hoeft dat niet.
 
-Nginx in de container proxyt `/api` en `/ws` naar `network-backend` op poort 8010.
+De container serveert `dist/` op poort 8012 (`serve`). **Geen nginx.**
+
+Publieke toegang via **Cloudflare Tunnel** — zie [docs/cloudflare-tunnel.md](../docs/cloudflare-tunnel.md).
+
+- **Optie A:** één hostname, path rules `/api/*` en `/ws` → `8010`, rest → `8012`
+- **Optie B:** apart API-hostname → `8010`, dashboard-hostname → `8012` + `VITE_API_URL` bij build
 
 ## Statuskleuren
 

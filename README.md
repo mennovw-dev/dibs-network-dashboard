@@ -25,4 +25,4 @@ npm install
 npm run dev
 ```
 
-Zie [network-frontend/README.md](network-frontend/README.md) voor build en VPS-deploy.
+Zie [network-frontend/README.md](network-frontend/README.md) voor build en [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) voor publieke toegang via Cloudflare Tunnel (geen nginx).
