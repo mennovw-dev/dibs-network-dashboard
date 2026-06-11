@@ -13,7 +13,7 @@ export interface HouseProfile {
 /* staging-pack-v1 — 8 Utrechtse huizen met gegenereerde foto's in /public/houses. */
 export const HOUSE_CATALOG: HouseProfile[] = [
   {
-    photo: '/houses/h_01.png',
+    photo: '/houses/h_01.webp',
     neighborhood: 'Lombok',
     street: 'Kanaalstraat 142',
     postcode: '3531 CL',
@@ -21,7 +21,7 @@ export const HOUSE_CATALOG: HouseProfile[] = [
     aliases: ['het kanaalhuis', 'kanaalstraat-huis', 'kanaalstraat'],
   },
   {
-    photo: '/houses/h_02.png',
+    photo: '/houses/h_02.webp',
     neighborhood: 'Wittevrouwen',
     street: 'Poortstraat 49',
     postcode: '3572 HC',
@@ -29,7 +29,7 @@ export const HOUSE_CATALOG: HouseProfile[] = [
     aliases: ['huize poortstraat', 'poortstraat'],
   },
   {
-    photo: '/houses/h_03.png',
+    photo: '/houses/h_03.webp',
     neighborhood: 'Oudwijk',
     street: 'Oudwijkerdwarsstraat 88',
     postcode: '3581 LD',
@@ -37,7 +37,7 @@ export const HOUSE_CATALOG: HouseProfile[] = [
     aliases: ['het oudwijkhuis', 'oudwijkhuis', 'oudwijkerdwarsstraat'],
   },
   {
-    photo: '/houses/h_04.png',
+    photo: '/houses/h_04.webp',
     neighborhood: 'Zuilen',
     street: 'Amsterdamsestraatweg 503',
     postcode: '3553 EE',
@@ -45,7 +45,7 @@ export const HOUSE_CATALOG: HouseProfile[] = [
     aliases: ['de straatweg', 'amsterdamsestraatweg-pand', 'amsterdamsestraatweg'],
   },
   {
-    photo: '/houses/h_05.png',
+    photo: '/houses/h_05.webp',
     neighborhood: 'Tuinwijk',
     street: 'Adelaarstraat 21',
     postcode: '3514 CB',
@@ -53,7 +53,7 @@ export const HOUSE_CATALOG: HouseProfile[] = [
     aliases: ['tuinwijkhuis', 'adelaarstraat'],
   },
   {
-    photo: '/houses/h_06.png',
+    photo: '/houses/h_06.webp',
     neighborhood: 'Lombok',
     street: 'Damstraat 25',
     postcode: '3531 BT',
@@ -61,7 +61,7 @@ export const HOUSE_CATALOG: HouseProfile[] = [
     aliases: ['damstraat'],
   },
   {
-    photo: '/houses/h_07.png',
+    photo: '/houses/h_07.webp',
     neighborhood: 'Vogelenbuurt',
     street: 'Merelstraat 30',
     postcode: '3514 CN',
@@ -69,7 +69,7 @@ export const HOUSE_CATALOG: HouseProfile[] = [
     aliases: ['huize merel', 'merelstraat'],
   },
   {
-    photo: '/houses/h_08.png',
+    photo: '/houses/h_08.webp',
     neighborhood: 'Wittevrouwen',
     street: 'Bekkerstraat 64',
     postcode: '3572 SK',

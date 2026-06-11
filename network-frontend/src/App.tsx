@@ -5,9 +5,13 @@ import { ListingPanel } from './components/ListingPanel'
 import { LocationReadout } from './components/LocationReadout'
 import { Metrics } from './components/Metrics'
 import { NetworkMap } from './components/NetworkMap'
+import { StreetPanel, type StreetSelection } from './components/StreetPanel'
+import { Timeline } from './components/Timeline'
+import { type TimeWindow } from './components/ViewSettings'
 import { useNetworkNodes } from './hooks/useNetworkNodes'
 import { useI18n } from './i18n'
 import { enrichNode, type EnrichedNode } from './lib/houses'
+import type { GeoLocation } from './lib/geocode'
 import {
   cityFromUrl,
   getCity,
@@ -25,6 +29,10 @@ function App() {
     () => cityFromUrl() ?? getCity(DEFAULT_CITY_ID),
   )
   const [buildings3d, setBuildings3d] = useState(true)
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>('live')
+  const [asOf, setAsOf] = useState<number>(() => Date.now())
+  const [cursorLoc, setCursorLoc] = useState<GeoLocation | null>(null)
+  const [street, setStreet] = useState<StreetSelection | null>(null)
 
   useEffect(() => {
     writeCityToUrl(city?.id ?? null)
@@ -34,12 +42,20 @@ function App() {
     setSelectedId(node?.id ?? null)
   }, [])
 
+  const handleTimeWindow = useCallback((next: TimeWindow) => {
+    setTimeWindow(next)
+    setAsOf(Date.now())
+  }, [])
+
   const enriched = useMemo<EnrichedNode[]>(() => nodes.map(enrichNode), [nodes])
   const plotted = enriched.filter((n) => n.has_coordinates).length
   const selectedNode = useMemo(
     () => enriched.find((n) => n.id === selectedId) ?? null,
     [enriched, selectedId],
   )
+
+  // Live mode = no time filtering; over-time mode uses the scrubber's asOf.
+  const effectiveAsOf = timeWindow === 'live' ? Number.MAX_SAFE_INTEGER : asOf
 
   return (
     <div className="app">
@@ -49,6 +65,9 @@ function App() {
         onSelectNode={handleSelectNode}
         city={city}
         buildings3d={buildings3d}
+        asOf={effectiveAsOf}
+        onCursorLocation={setCursorLoc}
+        onStreetSelect={setStreet}
       />
 
       <div className="map-chrome">
@@ -57,6 +76,8 @@ function App() {
           error={error}
           buildings3d={buildings3d}
           onToggle3d={setBuildings3d}
+          timeWindow={timeWindow}
+          onTimeWindow={handleTimeWindow}
         />
 
         <div className="left-rail">
@@ -68,10 +89,23 @@ function App() {
             lastUpdated={lastUpdated}
             lang={lang}
           />
+          <StreetPanel
+            selection={street}
+            onClose={() => setStreet(null)}
+            onPick={(node) => {
+              setSelectedId(node.id)
+              setStreet(null)
+            }}
+            lang={lang}
+          />
         </div>
 
         <ListingPanel node={selectedNode} onClose={() => setSelectedId(null)} />
-        <LocationReadout node={selectedNode} />
+        <LocationReadout location={cursorLoc} active={cursorLoc != null} />
+
+        {timeWindow !== 'live' && (
+          <Timeline timeWindow={timeWindow} asOf={asOf} onAsOf={setAsOf} lang={lang} />
+        )}
       </div>
     </div>
   )

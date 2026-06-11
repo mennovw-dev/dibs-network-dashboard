@@ -4,6 +4,8 @@ import type { City } from '../lib/cities'
 import { NL_VIEW } from '../lib/cities'
 import type { EnrichedNode } from '../lib/houses'
 import { statusTag } from '../lib/status'
+import { reverseGeocode, streetMatches, type GeoLocation } from '../lib/geocode'
+import type { StreetSelection } from './StreetPanel'
 import { useT } from '../i18n'
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
@@ -23,6 +25,9 @@ interface NetworkMapProps {
   onSelectNode: (node: EnrichedNode | null) => void
   city: City | null
   buildings3d: boolean
+  asOf: number
+  onCursorLocation: (loc: GeoLocation | null) => void
+  onStreetSelect: (selection: StreetSelection | null) => void
 }
 
 interface Rect {
@@ -124,6 +129,9 @@ export function NetworkMap({
   onSelectNode,
   city,
   buildings3d,
+  asOf,
+  onCursorLocation,
+  onStreetSelect,
 }: NetworkMapProps) {
   const t = useT()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -141,9 +149,17 @@ export function NetworkMap({
   onSelectRef.current = onSelectNode
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
+  const asOfRef = useRef(asOf)
+  asOfRef.current = asOf
+  const onCursorRef = useRef(onCursorLocation)
+  onCursorRef.current = onCursorLocation
+  const onStreetRef = useRef(onStreetSelect)
+  onStreetRef.current = onStreetSelect
   const tRef = useRef(t)
   tRef.current = t
   const declutterRaf = useRef<number | null>(null)
+  const cursorTimer = useRef<number | null>(null)
+  const cursorAbort = useRef<AbortController | null>(null)
 
   // Decide which cards expand using SCREEN-SPACE collision detection so expanded
   // cards never overlap. Selected + hovered get priority; the rest fill up to
@@ -156,9 +172,13 @@ export function NetworkMap({
     }
     const hovered = hoveredRef.current
     const selected = selectedRef.current
+    const asOfTs = asOfRef.current
+
+    const isVisible = (n: EnrichedNode) =>
+      !n.listed_at || new Date(n.listed_at).getTime() <= asOfTs
 
     const withCoords = nodesRef.current.filter(
-      (n) => n.has_coordinates && n.longitude != null && n.latitude != null,
+      (n) => n.has_coordinates && n.longitude != null && n.latitude != null && isVisible(n),
     )
 
     // Priority order, but force selected then hovered to the front.
@@ -192,6 +212,11 @@ export function NetworkMap({
       if (!entry) {
         continue
       }
+      if (!isVisible(node)) {
+        entry.el.style.display = 'none'
+        continue
+      }
+      entry.el.style.display = ''
       const isExpanded = expandedIds.has(node.id)
       const isSelected = node.id === selected
       const isHovered = node.id === hovered
@@ -243,11 +268,50 @@ export function NetworkMap({
     map.on('move', () => scheduleDeclutter.current())
     map.on('zoom', () => scheduleDeclutter.current())
 
-    map.on('click', (e) => {
-      // Clicking empty map clears selection.
-      if (!(e.originalEvent.target as HTMLElement)?.closest('.house-marker')) {
-        onSelectRef.current(null)
+    // Live cursor location (debounced reverse geocode).
+    map.on('mousemove', (e) => {
+      if (cursorTimer.current != null) {
+        window.clearTimeout(cursorTimer.current)
       }
+      cursorTimer.current = window.setTimeout(() => {
+        cursorAbort.current?.abort()
+        const ctrl = new AbortController()
+        cursorAbort.current = ctrl
+        reverseGeocode(e.lngLat.lat, e.lngLat.lng, ctrl.signal)
+          .then((loc) => onCursorRef.current(loc))
+          .catch(() => {})
+      }, 320)
+    })
+
+    map.on('mouseout', () => {
+      if (cursorTimer.current != null) {
+        window.clearTimeout(cursorTimer.current)
+        cursorTimer.current = null
+      }
+      onCursorRef.current(null)
+    })
+
+    map.on('click', (e) => {
+      // Clicking a marker is handled by the marker; clicking empty map opens the
+      // street view (entries on that street) and clears node selection.
+      if ((e.originalEvent.target as HTMLElement)?.closest('.house-marker')) {
+        return
+      }
+      onSelectRef.current(null)
+      reverseGeocode(e.lngLat.lat, e.lngLat.lng)
+        .then((loc) => {
+          const street = loc?.street ?? null
+          const wijk = loc?.neighborhood ?? null
+          const matches = nodesRef.current.filter((n) => {
+            const byStreet = street ? streetMatches(n.street, street) : false
+            const byWijk = wijk
+              ? (n.neighborhood ?? '').toLowerCase() === wijk.toLowerCase()
+              : false
+            return byStreet || byWijk
+          })
+          onStreetRef.current({ street, neighborhood: wijk, matches })
+        })
+        .catch(() => {})
     })
 
     mapRef.current = map
@@ -256,6 +320,11 @@ export function NetworkMap({
         cancelAnimationFrame(declutterRaf.current)
         declutterRaf.current = null
       }
+      if (cursorTimer.current != null) {
+        window.clearTimeout(cursorTimer.current)
+        cursorTimer.current = null
+      }
+      cursorAbort.current?.abort()
       map.remove()
       mapRef.current = null
       markersRef.current.clear()
@@ -331,10 +400,10 @@ export function NetworkMap({
     syncMarkerStates.current()
   }, [nodes])
 
-  // Re-sync visual states when selection changes.
+  // Re-sync visual states when selection, data or the time cursor changes.
   useEffect(() => {
     syncMarkerStates.current()
-  }, [selectedId, nodes])
+  }, [selectedId, nodes, asOf])
 
   // City change → smooth fly.
   useEffect(() => {

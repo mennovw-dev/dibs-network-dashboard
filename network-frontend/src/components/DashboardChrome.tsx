@@ -1,13 +1,15 @@
 import { STATUS_COLORS, STATUS_LABEL_KEYS } from '../lib/status'
 import { useT } from '../i18n'
 import { LangToggle } from './LangToggle'
-import { ViewSettings } from './ViewSettings'
+import { ViewSettings, type TimeWindow } from './ViewSettings'
 
 interface DashboardChromeProps {
   loading: boolean
   error: string | null
   buildings3d: boolean
   onToggle3d: (value: boolean) => void
+  timeWindow: TimeWindow
+  onTimeWindow: (value: TimeWindow) => void
 }
 
 export function DashboardChrome({
@@ -15,6 +17,8 @@ export function DashboardChrome({
   error,
   buildings3d,
   onToggle3d,
+  timeWindow,
+  onTimeWindow,
 }: DashboardChromeProps) {
   const t = useT()
 
@@ -35,7 +39,12 @@ export function DashboardChrome({
         </div>
       </div>
 
-      <ViewSettings buildings3d={buildings3d} onToggle3d={onToggle3d} />
+      <ViewSettings
+        buildings3d={buildings3d}
+        onToggle3d={onToggle3d}
+        timeWindow={timeWindow}
+        onTimeWindow={onTimeWindow}
+      />
 
       {(loading || error) && (
         <div className={`status-banner ${error ? 'status-banner--error' : ''}`}>
