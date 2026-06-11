@@ -56,6 +56,10 @@
   gap: 14px;
 }
 
+.map-bar__right {
+  gap: 8px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -99,20 +103,20 @@
   color: var(--violet-lite);
 }
 
-/* Status filter tab bar (huisstijl tab pattern, adapted) */
+/* Status filter tab bar — slick black-leading, neutral, with a status dot. */
 .status-tabs {
   position: absolute;
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 3px;
+  gap: 2px;
   padding: 4px;
-  background: var(--panel-gradient), var(--panel-bg);
-  border: 1px solid var(--panel-border);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
   border-radius: var(--rad-pill);
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px);
   z-index: 3;
 }
 
@@ -124,7 +128,7 @@
   border: none;
   border-radius: var(--rad-pill);
   background: transparent;
-  color: var(--fg2);
+  color: var(--chrome-dim);
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 600;
@@ -134,7 +138,32 @@
 }
 
 .status-tab:hover {
-  color: var(--fg);
+  color: var(--chrome-fg);
+}
+
+.status-tab__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--chrome-dim);
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.status-tab--all .status-tab__dot {
+  background: var(--chrome-fg);
+}
+
+.status-tab--active .status-tab__dot {
+  background: var(--green);
+}
+
+.status-tab--paused .status-tab__dot {
+  background: var(--gold);
+}
+
+.status-tab--closed .status-tab__dot {
+  background: var(--grey-closed);
 }
 
 .status-tab__count {
@@ -143,47 +172,153 @@
   font-weight: 600;
   padding: 1px 6px;
   border-radius: var(--rad-pill);
-  background: var(--s2);
-  color: var(--dim);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--chrome-dim);
 }
 
-/* Active pill — tinted to match the map legend / marker colors. */
 .status-tab.is-active {
-  background: var(--teal-soft);
-  color: var(--c100);
+  background: var(--chrome-hover);
+  color: var(--chrome-fg);
+}
+
+.status-tab.is-active .status-tab__dot {
+  opacity: 1;
 }
 
 .status-tab.is-active .status-tab__count {
-  background: rgba(84, 136, 133, 0.28);
-  color: var(--c100);
+  color: var(--chrome-fg);
 }
 
-.status-tab--active.is-active {
-  background: rgba(61, 220, 132, 0.14);
-  color: var(--green);
+/* Top-bar icon buttons (time toggle + settings) */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--chrome-border);
+  border-radius: 11px;
+  background: var(--chrome-bg);
+  color: var(--chrome-dim);
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
-.status-tab--active.is-active .status-tab__count {
-  background: rgba(61, 220, 132, 0.2);
-  color: var(--green);
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
 }
 
-.status-tab--paused.is-active {
-  background: rgba(255, 200, 97, 0.14);
+.icon-btn:hover {
+  color: var(--chrome-fg);
+  border-color: var(--chrome-border-strong);
+}
+
+.icon-btn.is-active {
+  color: var(--chrome-fg);
+  background: var(--chrome-hover);
+  border-color: var(--chrome-border-strong);
+}
+
+.time-toggle.is-active {
   color: var(--gold);
 }
 
-.status-tab--paused.is-active .status-tab__count {
-  background: rgba(255, 200, 97, 0.2);
-  color: var(--gold);
+/* Settings dropdown */
+.settings-menu {
+  position: relative;
 }
 
-.status-tab--closed.is-active {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--fg);
+.settings-dropdown {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 250px;
+  padding: 4px;
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(16px);
+  z-index: 5;
 }
 
-/* Left rail (city overview + metrics) */
+.settings-section {
+  padding: 11px 11px 12px;
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--chrome-border);
+}
+
+.settings-kick {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--chrome-dim);
+  margin-bottom: 9px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.settings-row__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--chrome-fg);
+}
+
+.settings-row__hint {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--chrome-dim);
+}
+
+.staging-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--chrome-dim);
+}
+
+.staging-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+}
+
+/* Metrics, restyled compact for inside the dropdown */
+.settings-dropdown .metrics {
+  background: var(--chrome-border);
+  border-color: var(--chrome-border);
+}
+
+.settings-dropdown .met {
+  background: var(--chrome-bg-solid);
+  backdrop-filter: none;
+}
+
+/* Left rail (city overview + street panel) */
 .left-rail {
   position: absolute;
   top: 64px;
@@ -196,11 +331,11 @@
 
 /* City overview panel */
 .city-overview {
-  background: var(--panel-gradient), var(--panel-bg);
-  border: 1px solid var(--panel-border);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
   border-radius: var(--rad-card);
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px);
   overflow: hidden;
 }
 
@@ -240,22 +375,25 @@
 }
 
 .city-card:hover {
-  background: var(--s1);
-  border-color: var(--panel-border);
+  background: var(--chrome-hover);
+  border-color: var(--chrome-border);
 }
 
 .city-card.is-active {
-  background: var(--violet-soft);
-  border-color: var(--violet);
+  background: var(--chrome-hover);
+  border-color: var(--chrome-border-strong);
 }
 
 .city-card__dot {
   flex: none;
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--violet-lite);
-  box-shadow: 0 0 10px var(--violet);
+  background: var(--chrome-dim);
+}
+
+.city-card.is-active .city-card__dot {
+  background: var(--chrome-fg);
 }
 
 .city-card__body {
@@ -279,7 +417,7 @@
 }
 
 .city-card__go {
-  color: var(--violet-lite);
+  color: var(--chrome-dim);
   font-size: 14px;
   opacity: 0;
   transform: translateX(-4px);
@@ -465,6 +603,37 @@
   border-radius: var(--rad-pill);
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(10px);
+}
+
+.timeline__windows {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--rad-pill);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.timeline__win {
+  border: none;
+  background: transparent;
+  color: var(--chrome-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  border-radius: var(--rad-pill);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.timeline__win:hover {
+  color: var(--chrome-fg);
+}
+
+.timeline__win.is-active {
+  background: var(--chrome-hover);
+  color: var(--chrome-fg);
 }
 
 .timeline__play,
@@ -1374,67 +1543,46 @@
   color: var(--dim);
 }
 
-/* Location readout (bottom-left) */
+/* Location readout (bottom-left) — only the street, white. */
 .location-readout {
   position: absolute;
   left: 16px;
   bottom: 44px;
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--panel-gradient), var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--rad-card);
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 13px;
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  border-radius: 11px;
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(10px);
-  max-width: min(320px, calc(100vw - 32px));
+  backdrop-filter: blur(14px);
+  max-width: min(340px, calc(100vw - 32px));
 }
 
-.location-readout--empty {
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.location-readout__dot {
+.location-readout__kick {
   flex: none;
-  width: 9px;
-  height: 9px;
-  margin-top: 3px;
-  border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 0 10px var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--chrome-dim);
 }
 
-.location-readout--empty .location-readout__dot {
-  background: var(--dim);
-  box-shadow: none;
-  margin-top: 0;
-}
-
-.location-readout__lines {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.location-readout__city {
+.location-readout__street {
   font-weight: 600;
   font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg);
+  color: var(--chrome-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.location-readout__line {
+.location-readout__hint {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.03em;
-  color: var(--fg2);
+  color: var(--chrome-dim);
 }
 
 /* Legend */
@@ -1508,9 +1656,9 @@
   color: var(--fg2) !important;
 }
 
-/* MapLibre navigation control offset (below the view-settings panel) */
+/* MapLibre navigation control offset (below the top-bar icon buttons) */
 .maplibregl-ctrl-top-right {
-  top: 168px;
+  top: 64px;
 }
 
 @media (max-width: 640px) {

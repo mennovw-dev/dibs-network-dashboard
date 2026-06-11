@@ -1,15 +1,20 @@
 import { STATUS_COLORS, STATUS_LABEL_KEYS } from '../lib/status'
 import { useT } from '../i18n'
-import { LangToggle } from './LangToggle'
-import { ViewSettings, type TimeWindow } from './ViewSettings'
+import { SettingsMenu } from './SettingsMenu'
+import { TimeToggle } from './TimeToggle'
 
 interface DashboardChromeProps {
   loading: boolean
   error: string | null
   buildings3d: boolean
   onToggle3d: (value: boolean) => void
-  timeWindow: TimeWindow
-  onTimeWindow: (value: TimeWindow) => void
+  timeActive: boolean
+  onToggleTime: () => void
+  nodeCount: number
+  plottedCount: number
+  source: string | null
+  lastUpdated: Date | null
+  lang: string
 }
 
 export function DashboardChrome({
@@ -17,8 +22,13 @@ export function DashboardChrome({
   error,
   buildings3d,
   onToggle3d,
-  timeWindow,
-  onTimeWindow,
+  timeActive,
+  onToggleTime,
+  nodeCount,
+  plottedCount,
+  source,
+  lastUpdated,
+  lang,
 }: DashboardChromeProps) {
   const t = useT()
 
@@ -34,17 +44,18 @@ export function DashboardChrome({
           </div>
         </div>
         <div className="map-bar__right">
-          <span className="view-kick">{t('topbar.staging')}</span>
-          <LangToggle />
+          <TimeToggle active={timeActive} onToggle={onToggleTime} />
+          <SettingsMenu
+            buildings3d={buildings3d}
+            onToggle3d={onToggle3d}
+            nodeCount={nodeCount}
+            plottedCount={plottedCount}
+            source={source}
+            lastUpdated={lastUpdated}
+            lang={lang}
+          />
         </div>
       </div>
-
-      <ViewSettings
-        buildings3d={buildings3d}
-        onToggle3d={onToggle3d}
-        timeWindow={timeWindow}
-        onTimeWindow={onTimeWindow}
-      />
 
       {(loading || error) && (
         <div className={`status-banner ${error ? 'status-banner--error' : ''}`}>

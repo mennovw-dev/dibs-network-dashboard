@@ -9,29 +9,19 @@ interface LocationReadoutProps {
 export function LocationReadout({ location, active }: LocationReadoutProps) {
   const t = useT()
 
-  if (!active || !location) {
+  if (!active || !location || !location.street) {
     return (
       <div className="location-readout location-readout--empty">
-        <span className="location-readout__dot" aria-hidden="true" />
-        {t('cursor.hint')}
+        <span className="location-readout__kick">{t('location.street')}</span>
+        <span className="location-readout__hint">{t('cursor.hint')}</span>
       </div>
     )
   }
 
-  const line2 = [location.postcode, location.city].filter(Boolean).join(' · ')
-
   return (
     <div className="location-readout">
-      <span className="location-readout__dot" aria-hidden="true" />
-      <div className="location-readout__lines">
-        <span className="location-readout__city">
-          {location.neighborhood || location.city || '—'}
-        </span>
-        <span className="location-readout__line">
-          {location.street || `${t('location.street')} · ${t('location.pending')}`}
-        </span>
-        {line2 && <span className="location-readout__line">{line2}</span>}
-      </div>
+      <span className="location-readout__kick">{t('location.street')}</span>
+      <span className="location-readout__street">{location.street}</span>
     </div>
   )
 }

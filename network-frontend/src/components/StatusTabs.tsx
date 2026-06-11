@@ -41,6 +41,7 @@ export function StatusTabs({ value, onChange, nodes }: StatusTabsProps) {
             onClick={() => onChange(tab.id)}
             aria-pressed={active}
           >
+            <span className="status-tab__dot" aria-hidden="true" />
             <span className="status-tab__label">{t(tab.labelKey)}</span>
             <span className="status-tab__count">{count}</span>
           </button>

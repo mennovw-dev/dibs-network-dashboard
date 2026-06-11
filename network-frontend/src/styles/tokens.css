@@ -58,6 +58,15 @@
   --sand: var(--teal-lite);
   --int: var(--teal);
 
+  /* Persistent chrome — slick black-leading, neutral, minimal accent */
+  --chrome-bg: rgba(9, 11, 10, 0.9);
+  --chrome-bg-solid: #0a0d0c;
+  --chrome-border: rgba(255, 255, 255, 0.09);
+  --chrome-border-strong: rgba(255, 255, 255, 0.17);
+  --chrome-fg: #f4f6f5;
+  --chrome-dim: #828b87;
+  --chrome-hover: rgba(255, 255, 255, 0.07);
+
   --panel-bg: rgba(15, 21, 20, 0.84);
   --panel-border: rgba(140, 175, 173, 0.16); /* subtle teal-gray, not a loud accent */
   --panel-gradient: linear-gradient(160deg, rgba(84, 136, 133, 0.08), rgba(15, 21, 20, 0) 60%);

@@ -4,14 +4,16 @@ import { useT } from '../i18n'
 
 interface TimelineProps {
   timeWindow: TimeWindow
+  onTimeWindow: (value: TimeWindow) => void
   asOf: number
   onAsOf: (ts: number) => void
   lang: string
 }
 
 const DAYS: Record<Exclude<TimeWindow, 'live'>, number> = { '7d': 7, '30d': 30, '90d': 90 }
+const WINDOWS: Exclude<TimeWindow, 'live'>[] = ['7d', '30d', '90d']
 
-export function Timeline({ timeWindow, asOf, onAsOf, lang }: TimelineProps) {
+export function Timeline({ timeWindow, onTimeWindow, asOf, onAsOf, lang }: TimelineProps) {
   const t = useT()
   const rafRef = useRef<number | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -56,6 +58,19 @@ export function Timeline({ timeWindow, asOf, onAsOf, lang }: TimelineProps) {
 
   return (
     <div className="timeline">
+      <div className="timeline__windows" role="radiogroup" aria-label={t('view.time')}>
+        {WINDOWS.map((w) => (
+          <button
+            key={w}
+            type="button"
+            className={`timeline__win ${timeWindow === w ? 'is-active' : ''}`}
+            onClick={() => onTimeWindow(w)}
+            aria-pressed={timeWindow === w}
+          >
+            {t(`view.time.${w}`)}
+          </button>
+        ))}
+      </div>
       <button
         type="button"
         className="timeline__play"

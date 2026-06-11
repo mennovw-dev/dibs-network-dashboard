@@ -3,7 +3,6 @@ import { CityOverview } from './components/CityOverview'
 import { DashboardChrome } from './components/DashboardChrome'
 import { ListingPanel } from './components/ListingPanel'
 import { LocationReadout } from './components/LocationReadout'
-import { Metrics } from './components/Metrics'
 import { NetworkMap } from './components/NetworkMap'
 import { StatusTabs, matchesStatusFilter, type StatusFilter } from './components/StatusTabs'
 import { StreetPanel, type StreetSelection } from './components/StreetPanel'
@@ -49,6 +48,11 @@ function App() {
     setAsOf(Date.now())
   }, [])
 
+  const handleToggleTime = useCallback(() => {
+    setTimeWindow((prev) => (prev === 'live' ? '30d' : 'live'))
+    setAsOf(Date.now())
+  }, [])
+
   const enriched = useMemo<EnrichedNode[]>(() => nodes.map(enrichNode), [nodes])
   const visibleNodes = useMemo(
     () => enriched.filter((n) => matchesStatusFilter(n, statusFilter)),
@@ -82,21 +86,19 @@ function App() {
           error={error}
           buildings3d={buildings3d}
           onToggle3d={setBuildings3d}
-          timeWindow={timeWindow}
-          onTimeWindow={handleTimeWindow}
+          timeActive={timeWindow !== 'live'}
+          onToggleTime={handleToggleTime}
+          nodeCount={enriched.length}
+          plottedCount={plotted}
+          source={source}
+          lastUpdated={lastUpdated}
+          lang={lang}
         />
 
         <StatusTabs value={statusFilter} onChange={setStatusFilter} nodes={enriched} />
 
         <div className="left-rail">
           <CityOverview city={city} nodes={enriched} onSelect={setCity} />
-          <Metrics
-            nodeCount={enriched.length}
-            plottedCount={plotted}
-            source={source}
-            lastUpdated={lastUpdated}
-            lang={lang}
-          />
           <StreetPanel
             selection={street}
             onClose={() => setStreet(null)}
@@ -112,7 +114,13 @@ function App() {
         <LocationReadout location={cursorLoc} active={cursorLoc != null} />
 
         {timeWindow !== 'live' && (
-          <Timeline timeWindow={timeWindow} asOf={asOf} onAsOf={setAsOf} lang={lang} />
+          <Timeline
+            timeWindow={timeWindow}
+            onTimeWindow={handleTimeWindow}
+            asOf={asOf}
+            onAsOf={setAsOf}
+            lang={lang}
+          />
         )}
       </div>
     </div>
