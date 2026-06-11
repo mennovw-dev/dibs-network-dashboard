@@ -1,0 +1,15 @@
+﻿# Build artifacts
+dist/
+bin/
+tmp/
+# Go
+*.exe
+*.test
+# Node
+node_modules/
+# Env / secrets
+.env
+.env.*
+# IDE
+.idea/
+.vscode/
