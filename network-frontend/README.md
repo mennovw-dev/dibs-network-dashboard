@@ -13,6 +13,8 @@ React + Vite + MapLibre dashboard voor staging listings. Mijlpaal 3.
   - Hover = gouden outline; klik = inzoomen + naar voorgrond + detailpaneel
   - Foto's + wijk/straat/postcode/bio uit `src/lib/houses.ts` (staging-pack-v1), bestanden in `public/houses/`
 - Live cursor-readout linksonder: wijk/straat/postcode onder de muis via PDOK reverse-geocode (`src/lib/geocode.ts`, gedebounced + gecachet)
+- Kaart-cards: hover vouwt rijk omhoog uit (adres, bio, hoe lang open, aantal views); een uitgevouwen card bedekt nooit een andere listing-pin (geen "afmuren")
+- Klik op een card → rechterpaneel met analytics: reacties-over-tijd sparkline, funnel (views → reactie-ratio → niet-voor-mij), huisgenoten op Dibs, pre-swipes (mock-model `src/lib/analytics.ts`, seeded per node)
 - Klik op de kaart → straat-panel met listings op die straat/wijk, op tijd gesorteerd (links onder de metrics)
 - "View over time"-toggle (Weergave) + timeline-scrubber onderaan die listings filtert op `listed_at` (soft tijdsdimensie, met play)
 - Huisfoto's geoptimaliseerd naar WebP (`scripts/optimize-houses.mjs`, ~97% kleiner; `sharp` is geen runtime-dep)

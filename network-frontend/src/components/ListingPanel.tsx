@@ -1,14 +1,117 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { EnrichedNode } from '../lib/houses'
+import { getAnalytics } from '../lib/analytics'
 import { panelBorderColor, statusTag } from '../lib/status'
-import { useT } from '../i18n'
+import { useT, type TFn } from '../i18n'
 
 interface ListingPanelProps {
   node: EnrichedNode | null
   onClose: () => void
+  lang: string
 }
 
-export function ListingPanel({ node, onClose }: ListingPanelProps) {
+function Sparkline({ values }: { values: number[] }) {
+  const max = Math.max(1, ...values)
+  const n = values.length
+  const line = values
+    .map((v, i) => {
+      const x = n > 1 ? (i / (n - 1)) * 100 : 0
+      const y = 34 - (v / max) * 30 - 2
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+  const area = `0,36 ${line} 100,36`
+
+  return (
+    <svg className="spark" viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true">
+      <polygon className="spark__area" points={area} />
+      <polyline className="spark__line" points={line} />
+    </svg>
+  )
+}
+
+function StatBar({ label, value, pct, tone }: { label: string; value: string; pct: number; tone: string }) {
+  return (
+    <div className="statbar">
+      <div className="statbar__row">
+        <span className="statbar__label">{label}</span>
+        <span className="statbar__value">{value}</span>
+      </div>
+      <div className="statbar__track">
+        <span
+          className={`statbar__fill statbar__fill--${tone}`}
+          style={{ width: `${Math.max(2, Math.min(100, pct))}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function Analytics({ node, t, lang }: { node: EnrichedNode; t: TFn; lang: string }) {
+  const a = useMemo(() => getAnalytics(node), [node])
+  const locale = lang === 'en' ? 'en-GB' : 'nl-NL'
+  const inceptionLabel = new Date(a.inception).toLocaleDateString(locale, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+  const reactPct = Math.round(a.reactRate * 100)
+  const notForMePct = a.views > 0 ? Math.round((a.notForMe / a.views) * 100) : 0
+  const lastCumulative = a.reactionsTimeline.at(-1)?.cumulative ?? 0
+
+  return (
+    <div className="analytics">
+      <div className="analytics__head">
+        <span className="analytics__title">{t('panel.analytics')}</span>
+        <span className="analytics__since">
+          {t('panel.openSince', { days: a.daysOpen })} · {inceptionLabel}
+        </span>
+      </div>
+
+      <div className="analytics__block">
+        <div className="analytics__blockhead">
+          <span>{t('panel.reactionsOverTime')}</span>
+          <span className="analytics__strong">{lastCumulative}</span>
+        </div>
+        <Sparkline values={a.reactionsTimeline.map((p) => p.cumulative)} />
+      </div>
+
+      <StatBar
+        label={t('panel.views')}
+        value={String(a.views)}
+        pct={100}
+        tone="cyan"
+      />
+      <StatBar
+        label={t('panel.reactRate')}
+        value={`${reactPct}% · ${a.clickedReact}`}
+        pct={reactPct}
+        tone="green"
+      />
+      <StatBar
+        label={t('panel.notForMe')}
+        value={`${notForMePct}% · ${a.notForMe}`}
+        pct={notForMePct}
+        tone="red"
+      />
+
+      <div className="analytics__grid">
+        <div className="ministat">
+          <span className="ministat__v">
+            {a.housematesOnDibs}/{a.housematesTotal}
+          </span>
+          <span className="ministat__k">{t('panel.housemates')}</span>
+        </div>
+        <div className="ministat">
+          <span className="ministat__v">{a.preSwiped}</span>
+          <span className="ministat__k">{t('panel.preSwiped')}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ListingPanel({ node, onClose, lang }: ListingPanelProps) {
   const t = useT()
   const [expanded, setExpanded] = useState(false)
 
@@ -72,6 +175,8 @@ export function ListingPanel({ node, onClose }: ListingPanelProps) {
       >
         <span className="listing-panel__photo-tag">{t('panel.staging')}</span>
       </div>
+
+      <Analytics node={node} t={t} lang={lang} />
 
       <div className="listing-panel__chips">
         <span className="chip chip--verified">✓ {t('panel.verified')}</span>

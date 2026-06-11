@@ -3,10 +3,11 @@ import maplibregl, { type Map, type Marker } from 'maplibre-gl'
 import type { City } from '../lib/cities'
 import { NL_VIEW } from '../lib/cities'
 import type { EnrichedNode } from '../lib/houses'
+import { getAnalytics } from '../lib/analytics'
 import { statusTag } from '../lib/status'
 import { reverseGeocode, streetMatches, type GeoLocation } from '../lib/geocode'
 import type { StreetSelection } from './StreetPanel'
-import { useT } from '../i18n'
+import { useT, type TFn } from '../i18n'
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
 const BUILDINGS_LAYER = 'dibs-3d-buildings'
@@ -14,9 +15,9 @@ const BUILDINGS_MIN_ZOOM = 13
 const MAX_EXPANDED = 6
 
 // Card footprint in screen px (must track the CSS card size for collision tests).
-const CARD_W = 168
+const CARD_W = 176
 const CARD_H = 124
-const CARD_H_SELECTED = 168
+const CARD_H_RICH = 232
 const CARD_PAD = 8
 
 interface NetworkMapProps {
@@ -39,6 +40,10 @@ interface Rect {
 
 function rectsOverlap(a: Rect, b: Rect): boolean {
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom)
+}
+
+function rectContainsPoint(r: Rect, x: number, y: number): boolean {
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
 }
 
 const STATUS_ORDER: Record<string, number> = { active: 0, paused: 1, closed: 2, draft: 3 }
@@ -112,15 +117,42 @@ function buildMarkerEl(): HTMLDivElement {
   el.innerHTML = `
     <div class="house-marker__card">
       <div class="house-marker__photo"></div>
+      <span class="house-marker__state"></span>
       <div class="house-marker__body">
         <span class="house-marker__name"></span>
+        <span class="house-marker__addr"></span>
         <span class="house-marker__wijk"></span>
+        <p class="house-marker__bio"></p>
+        <div class="house-marker__meta">
+          <span class="house-marker__age"></span>
+          <span class="house-marker__views"></span>
+        </div>
       </div>
-      <span class="house-marker__state"></span>
     </div>
     <span class="house-marker__pin"></span>
   `
   return el
+}
+
+function populateMarker(el: HTMLDivElement, node: EnrichedNode, t: TFn) {
+  const photo = el.querySelector<HTMLElement>('.house-marker__photo')
+  if (photo && photo.dataset.src !== node.photo) {
+    photo.dataset.src = node.photo
+    photo.style.backgroundImage = `url("${node.photo}")`
+  }
+  el.querySelector('.house-marker__name')!.textContent = node.name || node.city || '—'
+  el.querySelector('.house-marker__addr')!.textContent =
+    [node.street, node.postcode].filter(Boolean).join(' · ') || node.city || ''
+  el.querySelector('.house-marker__wijk')!.textContent = node.neighborhood ?? node.city ?? ''
+  el.querySelector('.house-marker__state')!.textContent = statusTag(node, t)
+
+  const bio = node.bio ?? ''
+  el.querySelector('.house-marker__bio')!.textContent =
+    bio.length > 96 ? `${bio.slice(0, 96).trimEnd()}…` : bio
+
+  const a = getAnalytics(node)
+  el.querySelector('.house-marker__age')!.textContent = t('marker.placedAgo', { days: a.daysOpen })
+  el.querySelector('.house-marker__views')!.textContent = t('marker.views', { n: a.views })
 }
 
 export function NetworkMap({
@@ -185,23 +217,44 @@ export function NetworkMap({
     const ranked = [...withCoords].sort((a, b) => priorityScore(a) - priorityScore(b))
     ranked.sort((a, b) => frontRank(a, selected, hovered) - frontRank(b, selected, hovered))
 
+    // Pre-project every pin so an expanded card can refuse to cover another listing.
+    const pins = withCoords.map((n) => ({
+      id: n.id,
+      pt: map.project([n.longitude!, n.latitude!]),
+    }))
+
+    const makeRect = (x: number, y: number, h: number): Rect => ({
+      left: x - CARD_W / 2 - CARD_PAD,
+      right: x + CARD_W / 2 + CARD_PAD,
+      top: y - h - CARD_PAD,
+      bottom: y + CARD_PAD,
+    })
+
     const placed: Rect[] = []
     const expandedIds = new Set<string>()
 
     for (const node of ranked) {
-      if (expandedIds.size >= MAX_EXPANDED) {
-        break
+      const forced = node.id === selected || node.id === hovered
+      if (!forced && expandedIds.size >= MAX_EXPANDED) {
+        continue
       }
-      const p = map.project([node.longitude!, node.latitude!])
-      const isSel = node.id === selected
-      const h = isSel ? CARD_H_SELECTED : CARD_H
-      const rect: Rect = {
-        left: p.x - CARD_W / 2 - CARD_PAD,
-        right: p.x + CARD_W / 2 + CARD_PAD,
-        top: p.y - h - CARD_PAD,
-        bottom: p.y + CARD_PAD,
+      const pin = pins.find((p) => p.id === node.id)!.pt
+      const rect = makeRect(pin.x, pin.y, forced ? CARD_H_RICH : CARD_H)
+
+      if (forced) {
+        // Selected / hovered always expand (intentional focus, drawn on top).
+        expandedIds.add(node.id)
+        placed.push(rect)
+        continue
       }
-      if (!placed.some((r) => rectsOverlap(r, rect))) {
+
+      const overlapsCard = placed.some((r) => rectsOverlap(r, rect))
+      // Hard rule: never wall off another listing — a card may not cover any
+      // other listing's pin (its clickable anchor).
+      const coversPin = pins.some(
+        (p) => p.id !== node.id && rectContainsPoint(rect, p.pt.x, p.pt.y),
+      )
+      if (!overlapsCard && !coversPin) {
         expandedIds.add(node.id)
         placed.push(rect)
       }
@@ -377,16 +430,7 @@ export function NetworkMap({
       }
 
       // Update content.
-      const photo = entry.el.querySelector<HTMLElement>('.house-marker__photo')
-      if (photo && photo.dataset.src !== node.photo) {
-        photo.dataset.src = node.photo
-        photo.style.backgroundImage = `url("${node.photo}")`
-      }
-      entry.el.querySelector('.house-marker__name')!.textContent =
-        node.name || node.city || '—'
-      entry.el.querySelector('.house-marker__wijk')!.textContent =
-        node.neighborhood ?? node.city ?? ''
-      entry.el.querySelector('.house-marker__state')!.textContent = statusTag(node, tRef.current)
+      populateMarker(entry.el, node, tRef.current)
     }
 
     // Remove stale markers.

@@ -100,7 +100,7 @@ function App() {
           />
         </div>
 
-        <ListingPanel node={selectedNode} onClose={() => setSelectedId(null)} />
+        <ListingPanel node={selectedNode} onClose={() => setSelectedId(null)} lang={lang} />
         <LocationReadout location={cursorLoc} active={cursorLoc != null} />
 
         {timeWindow !== 'live' && (
