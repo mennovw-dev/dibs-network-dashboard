@@ -1,39 +1,61 @@
-/* Warm Gold (ap4) + subtle Soft Edge radius (ap5, toned down) */
+/* Dibs huisstijl — black-clean. Violet primair (#863bff), cyan accent (#47bfff),
+   lavendel/wit tekst. Geen warm-goud/CRT meer. */
 :root {
-  --bg: #100d0a;
-  --s1: #181208;
-  --s2: #1e1810;
-  --s3: #33291a;
-  --s4: #3e3120;
-  --fg: #e8e4e0;
-  --fg2: #a09888;
-  --dim: #605848;
+  /* Surfaces — near-black met subtiele violette ondertoon */
+  --bg: #07060c;
+  --bg-deep: #050409;
+  --s1: #0d0b16;
+  --s2: #14111f;
+  --s3: #1d1830;
+  --s4: #2a2342;
 
-  --gold: #b89a5e;
-  --gold-warm: #cbaa6b;
-  --gold-bright: #e2c685;
-  --sand: #b8a080;
+  /* Tekst */
+  --fg: #f3f0fb;
+  --fg2: #b7afd2;
+  --dim: #6f6790;
 
-  --teal: #5e938e;
-  --teal-deep: #3c615e;
-  --teal-soft: #243b39;
-  --teal-lite: #8fbdb8;
+  /* Dibs violet (primair) */
+  --violet: #863bff;
+  --violet-deep: #7e14ff;
+  --violet-soft: #2a1a52;
+  --violet-lite: #b794ff;
+  --lavender: #ede6ff;
 
-  --red: #e0493a;
-  --red-aged: #7e4f4c;
-  --green: #5fe08a;
-  --green-pine: #2c5a3e;
+  /* Cyan accent */
+  --cyan: #47bfff;
+  --cyan-deep: #1f6f9e;
+  --cyan-soft: #112a3a;
 
-  --int: #c7a567;
-  --panel-bg: rgba(16, 12, 8, 0.88);
-  --map-vignette: radial-gradient(ellipse at center, transparent 40%, rgba(16, 12, 8, 0.55) 100%);
+  /* Status / lifecycle */
+  --green: #3ddc84;
+  --green-stale: #cfeede;
+  --green-pine: #1f5a3a;
+  --red: #ff4d4d;
+  --red-aged: #7e4248;
+  --gold: #ffc861;
+  --gold-bright: #ffd98a;
+  --grey-closed: #4a4560;
 
-  --rad: 8px;
-  --rad-card: 10px;
-  --rad-chip: 6px;
+  /* Semantische aliassen (compat met bestaande code) */
+  --teal: var(--cyan);
+  --teal-deep: var(--cyan-deep);
+  --teal-soft: var(--cyan-soft);
+  --teal-lite: var(--violet-lite);
+  --sand: var(--violet-lite);
+  --int: var(--violet);
 
-  --font-mono: 'Space Mono', ui-monospace, monospace;
-  --font-sans: 'Montserrat', system-ui, sans-serif;
+  --panel-bg: rgba(13, 11, 22, 0.82);
+  --panel-border: rgba(135, 59, 255, 0.28);
+  --map-vignette: radial-gradient(ellipse at center, transparent 52%, rgba(5, 4, 9, 0.62) 100%);
 
-  --shadow-panel: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --rad: 10px;
+  --rad-card: 14px;
+  --rad-chip: 8px;
+  --rad-pill: 999px;
+
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 0 1px rgba(135, 59, 255, 0.18), 0 8px 32px rgba(135, 59, 255, 0.12);
 }

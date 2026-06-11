@@ -4,10 +4,14 @@ React + Vite + MapLibre dashboard voor staging listings. Mijlpaal 3.
 
 ## Features
 
+- Black-clean Dibs huisstijl (violet/cyan), MapLibre dark basemap
+- Stad-select (`CitySwitcher`, registry in `src/lib/cities.ts`, `?city=` URL-param) — Utrecht eerst, 1 entry per nieuwe stad
+- NL/ENG taaltoggle rechtsbovenin (lichtgewicht i18n, `src/i18n/`, localStorage)
+- 3D-gebouwen via OpenStreetMap-extrusies (MapLibre `fill-extrusion`), aan/uit in Weergave-paneel
 - Kaart met listing-nodes (kleur per status: groen/goud/rood/grijs)
+- Locatie-readout linksonder (stad/straat/postcode/wijk i.p.v. coördinaten)
 - Initiële load via REST (`/api/v1/spatial/nodes`)
 - Live updates via WebSocket (`/ws`, elke 10s snapshot)
-- Hover-popup met naam, stad, status en reacties
 
 ## Lokaal ontwikkelen
 
@@ -48,7 +52,11 @@ Publieke toegang via **Cloudflare Tunnel** — zie [docs/cloudflare-tunnel.md](.
 
 | Status | Kleur |
 |--------|-------|
-| `active` | groen |
+| `active` | groen (+ halo) |
 | `paused` | goud (+ halo) |
-| `closed` | rood (+ halo) |
-| `draft` | grijs |
+| `closed` | grijs |
+| `draft` | gedimd grijs |
+
+## Een stad toevoegen
+
+Voeg één entry toe aan `CITIES` in `src/lib/cities.ts` (`id`, `name`, `center`, `zoom`, `pitch`, `bearing`, `bounds`). De switcher en `?city=`-routing werken dan automatisch.

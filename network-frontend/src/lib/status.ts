@@ -1,42 +1,48 @@
 import type { ListingNode, ListingStatus } from '../types'
+import type { TFn } from '../i18n'
 
 export const STATUS_COLORS: Record<string, string> = {
-  active: 'var(--teal)',
-  paused: 'var(--gold-bright)',
-  closed: 'var(--dim)',
-  draft: 'var(--fg2)',
+  active: 'var(--green)',
+  paused: 'var(--gold)',
+  closed: 'var(--grey-closed)',
+  draft: 'var(--dim)',
 }
 
-export const STATUS_LABELS: Record<string, string> = {
-  active: 'Open',
-  paused: 'Gepauzeerd',
-  closed: 'Gesloten',
-  draft: 'Concept',
+export const STATUS_LABEL_KEYS: Record<string, string> = {
+  active: 'status.active',
+  paused: 'status.paused',
+  closed: 'status.closed',
+  draft: 'status.draft',
 }
 
 export const MAP_STATUS_COLORS: Record<string, string> = {
-  active: '#5e938e',
-  paused: '#e2c685',
-  closed: '#605848',
-  draft: '#a09888',
+  active: '#3ddc84',
+  paused: '#ffc861',
+  closed: '#4a4560',
+  draft: '#6f6790',
 }
 
-export function statusTag(node: ListingNode): string {
+export function statusLabel(status: ListingStatus | string, t: TFn): string {
+  const key = STATUS_LABEL_KEYS[status]
+  return key ? t(key) : status
+}
+
+export function statusTag(node: ListingNode, t: TFn): string {
   if (node.status === 'active' && node.reactions_max > 0) {
-    return `${node.reactions_count} / ${node.reactions_max} reacties`
+    return `${node.reactions_count} / ${node.reactions_max} ${t('panel.reactions')}`
   }
-  return STATUS_LABELS[node.status] ?? node.status
+  return statusLabel(node.status, t)
 }
 
 export function panelBorderColor(status: ListingStatus | string): string {
   switch (status) {
     case 'active':
-      return 'var(--teal)'
+      return 'var(--green)'
     case 'paused':
-      return 'var(--gold-bright)'
-    case 'closed':
-      return 'var(--dim)'
-    default:
       return 'var(--gold)'
+    case 'closed':
+      return 'var(--grey-closed)'
+    default:
+      return 'var(--violet)'
   }
 }

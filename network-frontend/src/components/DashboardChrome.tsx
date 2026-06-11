@@ -1,71 +1,56 @@
-import { STATUS_COLORS, STATUS_LABELS } from '../lib/status'
+import { STATUS_COLORS, STATUS_LABEL_KEYS } from '../lib/status'
+import { useT } from '../i18n'
+import { LangToggle } from './LangToggle'
+import { ViewSettings } from './ViewSettings'
 
 interface DashboardChromeProps {
-  nodeCount: number
-  plottedCount: number
-  source: string | null
-  lastUpdated: Date | null
   loading: boolean
   error: string | null
+  buildings3d: boolean
+  onToggle3d: (value: boolean) => void
 }
 
 export function DashboardChrome({
-  nodeCount,
-  plottedCount,
-  source,
-  lastUpdated,
   loading,
   error,
+  buildings3d,
+  onToggle3d,
 }: DashboardChromeProps) {
+  const t = useT()
+
   return (
     <>
       <div className="map-bar">
-        <div className="brand">
-          <span className="brand__mark" aria-hidden="true" />
-          <span className="brand__name">dibs</span>
-          <span className="brand__sep">·</span>
-          <span className="brand__view">Network view</span>
+        <div className="map-bar__left">
+          <div className="brand">
+            <span className="brand__mark" aria-hidden="true" />
+            <span className="brand__name">dibs</span>
+            <span className="brand__sep">·</span>
+            <span className="brand__view">{t('brand.view')}</span>
+          </div>
         </div>
-        <span className="view-kick">
-          Staging · <b>Nederland</b>
-        </span>
+        <div className="map-bar__right">
+          <span className="view-kick">{t('topbar.staging')}</span>
+          <LangToggle />
+        </div>
       </div>
 
-      <div className="metrics">
-        <div className="met">
-          <span className="met-k">Nodes</span>
-          <span className="met-v">{nodeCount}</span>
-        </div>
-        <div className="met">
-          <span className="met-k">Op kaart</span>
-          <span className="met-v">{plottedCount}</span>
-        </div>
-        <div className="met">
-          <span className="met-k">Bron</span>
-          <span className="met-v met-v--sm">{source ?? '—'}</span>
-        </div>
-        <div className="met">
-          <span className="met-k">Update</span>
-          <span className="met-v met-v--sm">
-            {lastUpdated ? lastUpdated.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
-          </span>
-        </div>
-      </div>
+      <ViewSettings buildings3d={buildings3d} onToggle3d={onToggle3d} />
 
       {(loading || error) && (
         <div className={`status-banner ${error ? 'status-banner--error' : ''}`}>
-          {error ?? 'Laden…'}
+          {error ?? t('status.loading')}
         </div>
       )}
 
       <footer className="map-legend">
-        {Object.entries(STATUS_LABELS).map(([status, label]) => (
+        {Object.entries(STATUS_LABEL_KEYS).map(([status, key]) => (
           <span key={status} className="lg">
             <i style={{ background: STATUS_COLORS[status] }} />
-            {label}
+            {t(key)}
           </span>
         ))}
-        <span className="lg lg--dim">3D tiles · binnenkort</span>
+        <span className="lg lg--dim">{t('legend.3d')}</span>
       </footer>
     </>
   )

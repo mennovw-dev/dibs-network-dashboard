@@ -12,6 +12,10 @@ export interface ListingNode {
   reactions_max: number
   listed_at: string
   has_coordinates: boolean
+  /* Optioneel — geleverd door rijker (mock) model, valt netjes terug als afwezig. */
+  street?: string | null
+  postcode?: string | null
+  neighborhood?: string | null
 }
 
 export interface NodesResponse {
